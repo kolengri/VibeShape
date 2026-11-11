@@ -3,7 +3,7 @@ import { type Face, type Shape3D, setOC } from "replicad"
 import initializeOpenCascade, { type OpenCascadeInstance } from "replicad-opencascadejs"
 import { inspectOcctBody } from "./occt-body-validation"
 import { DraftError, draftOcctShape } from "./occt-draft"
-import { occtBoundingBoxCenter, scaleOcctShape } from "./occt-scale"
+import { occtBoundingBoxCenter, ScaleError, scaleOcctShape } from "./occt-scale"
 import { createOcctBox, createOcctCylinder } from "./occt-shapes"
 
 let occt: OpenCascadeInstance
@@ -224,10 +224,28 @@ describe("OCCT Scale", () => {
   it("rejects factors outside 0.001 to 1000", () => {
     const source = box()
     try {
-      for (const factor of [0, 0.0005, 1001, Number.NaN])
-        expect(() => scaleOcctShape(occt, source, { factor, center: { kind: "origin" } })).toThrow(
-          "Scale factor",
-        )
+      for (const factor of [0, 0.0005, 1001, Number.NaN]) {
+        const scale = () => scaleOcctShape(occt, source, { factor, center: { kind: "origin" } })
+        expect(scale).toThrow(ScaleError)
+        expect(scale).toThrow("Scale factor must be between 0.001 and 1000.")
+      }
+    } finally {
+      source.delete()
+    }
+  })
+
+  it("fails with a typed, actionable error when the result leaves the world workspace", () => {
+    const source = box()
+    try {
+      // About x = -100 000 mm, factor two maps the box to x >= 100 000 mm.
+      const scale = () =>
+        scaleOcctShape(occt, source, {
+          factor: 2,
+          center: { kind: "point", point: [-100_000, 0, 0] },
+        })
+      expect(scale).toThrow(ScaleError)
+      expect(scale).toThrow("Reduce the factor or move the scale center closer to the body.")
+      expect(inspectOcctBody(occt, source).volume).toBeCloseTo(SIZE * SIZE * HEIGHT, 6)
     } finally {
       source.delete()
     }

@@ -215,7 +215,7 @@ import {
   revolveSweep,
   terminateRevolveTool,
 } from "./occt-revolve-extent"
-import { scaleOcctShape } from "./occt-scale"
+import { ScaleError, scaleOcctShape } from "./occt-scale"
 import {
   createOcctBox,
   createOcctCone,
@@ -273,6 +273,11 @@ export type FeatureEvaluationResult =
           | "invalid-feature-geometry"
           | "missing-feature-dependency"
         message: string
+        /**
+         * Set only for typed failures whose message names the failing input and a fix. Other
+         * messages are developer diagnostics and never replace the localized catalog advice.
+         */
+        userActionable?: true
       }>
     }
 
@@ -712,6 +717,14 @@ function featureFailure(
   message: string,
 ): Extract<FeatureEvaluationResult, { ok: false }> {
   return { ok: false, diagnostic: { code, message } }
+}
+
+/** A failure whose message tells the user what to change; see `userActionable`. */
+function actionableFeatureFailure(
+  code: Extract<FeatureEvaluationResult, { ok: false }>["diagnostic"]["code"],
+  message: string,
+): Extract<FeatureEvaluationResult, { ok: false }> {
+  return { ok: false, diagnostic: { code, message, userActionable: true } }
 }
 
 function withinFeatureWorkspace(values: readonly number[]) {
@@ -2693,7 +2706,7 @@ function parsePressPullFeature(input: FeatureEvaluationInput, version = 1): Feat
         : "Press Pull requires a planar face and a nonzero bounded distance.",
     )
   if (parameters.data.sourceContentHash !== input.dependencies[0]?.contentHash)
-    return featureFailure(
+    return actionableFeatureFailure(
       "invalid-feature-parameters",
       "Press Pull source changed. Reselect the face on the current body.",
     )
@@ -3383,7 +3396,7 @@ function createScaleFeatureShape(
   feature: Extract<ParsedFeature, { kind: "scale" }>,
   source: Shape3D | undefined,
 ) {
-  if (!source) throw new Error("Scale target body is unavailable.")
+  if (!source) throw new ScaleError("The Scale target body is unavailable. Reselect the body.")
   return scaleOcctShape(opencascade, source, feature.parameters)
 }
 
@@ -4981,6 +4994,7 @@ const actionableGeometryErrors = [
   FilletV3Error,
   ConstrainedLoftError,
   DraftError,
+  ScaleError,
   ThickenError,
   PressPullError,
 ]
@@ -4992,10 +5006,10 @@ function featureGeometryFailure(error: unknown, cleanupSucceeded: boolean) {
       "Feature geometry evaluation failed and temporary shape cleanup did not complete.",
     )
   if (error instanceof ShellOpeningRepairError)
-    return featureFailure("invalid-feature-parameters", error.message)
+    return actionableFeatureFailure("invalid-feature-parameters", error.message)
   if (error instanceof LegacyEdgeTreatmentError) return featureFailure(error.code, error.message)
   if (error instanceof Error && actionableGeometryErrors.some((Kind) => error instanceof Kind))
-    return featureFailure("invalid-feature-geometry", error.message)
+    return actionableFeatureFailure("invalid-feature-geometry", error.message)
   return featureFailure("invalid-feature-geometry", "Feature geometry evaluation failed.")
 }
 
@@ -5014,6 +5028,12 @@ function uniqueFaceShapeKey(
   const id =
     resolved.ok && resolved.candidateIds.length === 1 ? resolved.candidateIds[0] : undefined
   return id?.startsWith("face:") ? snapshot.transientShapeKeys.get(id) : undefined
+}
+
+/** Why a body-face resolution did not yield exactly one face; two or more candidates are ambiguous. */
+function bodyFaceResolutionFailure(resolved: ReturnType<GeometryShellOpeningResolver>) {
+  if (!resolved.ok) return resolved.reason
+  return resolved.candidateIds.length > 1 ? "ambiguous" : "missing"
 }
 
 function shellOpeningShapeKeys(candidateIds: readonly string[], snapshot: TopologyCaptureSnapshot) {
@@ -5833,7 +5853,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       const key = uniqueFaceShapeKey(resolved, snapshot)
       if (key === undefined)
         throw new Failure(
-          `${label} face ${index + 1} is ${resolved.ok ? "missing" : resolved.reason}. Reselect the faces on the current body.`,
+          `${label} face ${index + 1} is ${bodyFaceResolutionFailure(resolved)}. Reselect the faces on the current body.`,
         )
       return key
     })

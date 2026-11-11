@@ -1,3 +1,4 @@
+import { SCALE_MAX_FACTOR, SCALE_MIN_FACTOR } from "@vibeshape/protocol"
 import type { Shape3D } from "replicad"
 import type { OpenCascadeInstance } from "replicad-opencascadejs"
 import { featureResultMetricsAreValid } from "./feature-result-validation"
@@ -12,21 +13,25 @@ export type ScaleCenter =
 export type ScaleGeometryParameters = Readonly<{ factor: number; center: ScaleCenter }>
 
 type OwnedBinding = { delete(): unknown }
+type Point = [number, number, number]
 
-/** Axis-aligned world bounding-box centre; the symmetric tolerance gap cancels out. */
-export function occtBoundingBoxCenter(
-  occt: OpenCascadeInstance,
-  shape: Shape3D,
-): [number, number, number] {
+/** A user-actionable Scale failure; the message is safe to surface as a feature diagnostic. */
+export class ScaleError extends Error {}
+
+/** Every scaled body stays within this distance of the world origin on each axis. */
+const SCALE_WORKSPACE_LIMIT_MM = 100_000
+
+/** Axis-aligned world bounding box; the symmetric tolerance gap cancels out of its centre. */
+function occtBoundingBox(occt: OpenCascadeInstance, shape: Shape3D): { min: Point; max: Point } {
   const box = new occt.Bnd_Box_1()
   try {
     occt.BRepBndLib.AddOptimal(shape.wrapped, box, false, false)
-    if (box.IsVoid()) throw new Error("Scale cannot measure the body bounding box.")
+    if (box.IsVoid()) throw new ScaleError("Scale cannot measure the body bounding box.")
     const min = box.CornerMin()
     try {
       const max = box.CornerMax()
       try {
-        return [(min.X() + max.X()) / 2, (min.Y() + max.Y()) / 2, (min.Z() + max.Z()) / 2]
+        return { min: [min.X(), min.Y(), min.Z()], max: [max.X(), max.Y(), max.Z()] }
       } finally {
         max.delete()
       }
@@ -36,6 +41,19 @@ export function occtBoundingBoxCenter(
   } finally {
     box.delete()
   }
+}
+
+export function occtBoundingBoxCenter(occt: OpenCascadeInstance, shape: Shape3D): Point {
+  const { min, max } = occtBoundingBox(occt, shape)
+  return [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2]
+}
+
+function requireWithinWorkspace(occt: OpenCascadeInstance, result: Shape3D) {
+  const { min, max } = occtBoundingBox(occt, result)
+  if ([...min, ...max].some((value) => Math.abs(value) > SCALE_WORKSPACE_LIMIT_MM))
+    throw new ScaleError(
+      `The scaled body extends beyond ${SCALE_WORKSPACE_LIMIT_MM} mm from the world origin. Reduce the factor or move the scale center closer to the body.`,
+    )
 }
 
 function scaleCenterPoint(
@@ -54,10 +72,12 @@ export function scaleOcctShape(
   parameters: ScaleGeometryParameters,
 ): Shape3D {
   const { factor } = parameters
-  if (!Number.isFinite(factor) || factor < 0.001 || factor > 1000)
-    throw new Error("Scale factor must be between 0.001 and 1000.")
+  if (!Number.isFinite(factor) || factor < SCALE_MIN_FACTOR || factor > SCALE_MAX_FACTOR)
+    throw new ScaleError(
+      `Scale factor must be between ${SCALE_MIN_FACTOR} and ${SCALE_MAX_FACTOR}.`,
+    )
   if (!featureResultMetricsAreValid(inspectOcctBody(occt, source), 1))
-    throw new Error("Scale requires one valid exact solid body.")
+    throw new ScaleError("Scale requires one valid exact solid body. Repair the target body.")
   const owned: OwnedBinding[] = []
   const own = <T extends OwnedBinding>(value: T) => {
     owned.push(value)
@@ -69,11 +89,15 @@ export function scaleOcctShape(
     transform.SetScale(center, factor)
     // Copy=true keeps the cached source shape and its topology snapshot intact.
     const builder = own(new occt.BRepBuilderAPI_Transform_2(source.wrapped, transform, true))
-    if (!builder.IsDone()) throw new Error("OCCT scale did not complete.")
+    if (!builder.IsDone())
+      throw new ScaleError("OCCT could not scale this body. Adjust the factor or the center.")
     const result = adoptOcctShape(builder.Shape(), castOcctShape)
     try {
+      requireWithinWorkspace(occt, result)
       if (!featureResultMetricsAreValid(inspectOcctBody(occt, result), 1))
-        throw new Error("Scale did not produce one valid solid.")
+        throw new ScaleError(
+          "Scale did not produce one valid solid. Adjust the factor or the center.",
+        )
       return result
     } catch (error) {
       result.delete()

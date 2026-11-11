@@ -463,22 +463,12 @@ function rebuilt(messages: readonly DocumentWorkerResponse[], requestId: string)
 }
 
 describe("DocumentWorkerRuntime", () => {
-  it("preserves bounded fillet kernel diagnostics in shared evaluation evidence", async () => {
-    const { runtime, engine, messages } = createHarness()
-    const filletId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3199")
-    const message =
-      "Fillet failed at radius 40 mm. Radius 5 mm built a valid single solid; this is not a maximum."
-    const evaluate = engine.evaluateFeature.bind(engine)
-    engine.evaluateFeature = async (input, progress) =>
-      input.featureId === filletId
-        ? { ok: false, diagnostic: { code: "invalid-feature-geometry", message, retryable: false } }
-        : evaluate(input, progress)
-    const input = request("fillet-diagnostic")
-    if (input.type !== "rebuildDocument") throw new Error("Expected rebuild request.")
-    input.document = documentRebuildSnapshotSchema.parse({
-      ...input.document,
-      features: [
-        box(),
+  const filletId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3199")
+  const draftId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3198")
+  const forwardedFeatures = {
+    fillet: {
+      id: filletId,
+      record: () =>
         featureRecordSchema.parse({
           schemaVersion: 0,
           id: filletId,
@@ -488,33 +478,12 @@ describe("DocumentWorkerRuntime", () => {
           references: [],
           suppressed: false,
         }),
-      ],
-    })
-    await runtime.handle(input)
-    const response = rebuilt(messages, "fillet-diagnostic")
-    expect(
-      response.evaluation.records.find(({ featureId }) => featureId === filletId),
-    ).toMatchObject({
-      status: "failed",
-      diagnostics: [{ values: { reason: "invalid-feature-geometry", message } }],
-    })
-  })
-
-  it("forwards the Draft kernel message that names the failing face", async () => {
-    const { runtime, engine, messages } = createHarness()
-    const draftId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3198")
-    const message = "Draft cannot tilt selected face 2 or a face tangent to it."
-    const evaluate = engine.evaluateFeature.bind(engine)
-    engine.evaluateFeature = async (input, progress) =>
-      input.featureId === draftId
-        ? { ok: false, diagnostic: { code: "invalid-feature-geometry", message, retryable: false } }
-        : evaluate(input, progress)
-    const input = request("draft-diagnostic")
-    if (input.type !== "rebuildDocument") throw new Error("Expected rebuild request.")
-    input.document = documentRebuildSnapshotSchema.parse({
-      ...input.document,
-      features: [
-        box(),
+      message:
+        "Fillet failed at radius 40 mm. Radius 5 mm built a valid single solid; this is not a maximum.",
+    },
+    draft: {
+      id: draftId,
+      record: () =>
         featureRecordSchema.parse({
           schemaVersion: 0,
           id: draftId,
@@ -549,17 +518,59 @@ describe("DocumentWorkerRuntime", () => {
           references: [],
           suppressed: false,
         }),
-      ],
+      message: "Draft cannot tilt selected face 2 or a face tangent to it.",
+    },
+  } as const
+
+  /** Rebuilds a box and one forwarding feature whose kernel evaluation fails with `diagnostic`. */
+  async function rebuildFailedFeature(
+    kind: keyof typeof forwardedFeatures,
+    diagnostic: Readonly<{ message: string; userActionable?: true }>,
+  ) {
+    const { runtime, engine, messages } = createHarness()
+    const target = forwardedFeatures[kind]
+    const evaluate = engine.evaluateFeature.bind(engine)
+    engine.evaluateFeature = async (input, progress) =>
+      input.featureId === target.id
+        ? { ok: false, diagnostic: { code: "invalid-feature-geometry", ...diagnostic } }
+        : evaluate(input, progress)
+    const requestId = `${kind}-diagnostic`
+    const input = request(requestId)
+    if (input.type !== "rebuildDocument") throw new Error("Expected rebuild request.")
+    input.document = documentRebuildSnapshotSchema.parse({
+      ...input.document,
+      features: [box(), target.record()],
     })
     await runtime.handle(input)
-    const response = rebuilt(messages, "draft-diagnostic")
-    expect(
-      response.evaluation.records.find(({ featureId }) => featureId === draftId),
-    ).toMatchObject({
-      status: "failed",
-      diagnostics: [{ values: { reason: "invalid-feature-geometry", message } }],
-    })
-  })
+    return rebuilt(messages, requestId).evaluation.records.find(
+      ({ featureId }) => featureId === target.id,
+    )
+  }
+
+  it.each(["fillet", "draft"] as const)(
+    "forwards the typed, user-actionable %s kernel message",
+    async (kind) => {
+      const { message } = forwardedFeatures[kind]
+      expect(await rebuildFailedFeature(kind, { message, userActionable: true })).toMatchObject({
+        status: "failed",
+        diagnostics: [{ values: { reason: "invalid-feature-geometry", message } }],
+      })
+    },
+  )
+
+  it.each(["fillet", "draft"] as const)(
+    "keeps the catalog advice for an untyped %s kernel failure",
+    async (kind) => {
+      const record = await rebuildFailedFeature(kind, {
+        message: "Feature geometry evaluation failed.",
+      })
+      expect(record).toMatchObject({
+        status: "failed",
+        diagnostics: [{ values: { reason: "invalid-feature-geometry" } }],
+      })
+      expect(record?.diagnostics[0]?.values).not.toHaveProperty("message")
+    },
+  )
 
   it("stops stale evidence scanning before probing later model references", async () => {
     const { engine, messages, runtime } = createHarness()
