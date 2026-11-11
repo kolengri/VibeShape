@@ -14,7 +14,9 @@ parts. Optional `partId` limits it to one authored Part; obtain it from `model_p
 | `no-drawable-bodies` | No | The selected Part is a triangle mesh, or the model has no exact body |
 | `drawing-too-complex` | No | A view exceeds the projected edge or curve-sample budget; draw fewer parts or views |
 | `stale-revision` | Yes | The revision is stale, changed while projecting or the session was replaced; read the current revision and prepare again |
-| `drawing-failed` | Kernel flag | Other projection failures | Optional `settings` accepts:
+| `drawing-failed` | Kernel flag | Other projection failures |
+
+Optional `settings` accepts:
 
 | Field | Default | Values |
 |---|---|---|
