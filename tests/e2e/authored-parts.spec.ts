@@ -91,7 +91,7 @@ test("reports a visibility save failure without moving model browser rows", asyn
   const cylinder = tree.getByRole("treeitem", { name: "Part Cylinder 1", exact: true })
   const positions = [await box.boundingBox(), await cylinder.boundingBox()]
   await tree.getByRole("button", { name: /Hide.*Box 1/ }).click()
-  const error = page.getByRole("alert").filter({ hasText: /Visibility.*could not be saved/ })
+  const error = page.getByRole("alert").filter({ hasText: /Visibility for .* was not changed/ })
   await expect(error).toBeVisible()
   await expect(error).toContainText("Box 1")
   await page.evaluate('Reflect.set(globalThis, "rejectMetadataSave", false)')
@@ -103,7 +103,8 @@ test("reports a visibility save failure without moving model browser rows", asyn
 })
 
 async function renameItem(page: Page, trigger: string, name: string) {
-  await page.getByRole("button", { name: trigger, exact: true }).click()
+  // The previous row's restored-focus tooltip can cover this action, so activate it by keyboard.
+  await page.getByRole("button", { name: trigger, exact: true }).press("Enter")
   const dialog = page.getByRole("dialog", { name: "Rename item", exact: true })
   await dialog.getByRole("textbox", { name: "Name", exact: true }).fill(name)
   await dialog.getByRole("button", { name: "Rename", exact: true }).click()
@@ -228,6 +229,8 @@ test("keeps authored folder controls usable in compact light and dark layouts", 
         path: test.info().outputPath(`authored-parts-${width}-${theme.toLowerCase()}.png`),
         animations: "disabled",
       })
+      // The compact model-tree drawer may cover History, so close it to reach History folders.
+      await page.getByRole("button", { name: "Hide model tree", exact: true }).click()
       await page.getByRole("button", { name: "New folder", exact: true }).click()
       const dialog = page.getByRole("dialog", { name: "New folder", exact: true })
       await dialog.getByRole("textbox", { name: "Folder name", exact: true }).fill("Compact")
@@ -240,6 +243,8 @@ test("keeps authored folder controls usable in compact light and dark layouts", 
         animations: "disabled",
       })
       await dialog.getByRole("button", { name: "Cancel", exact: true }).click()
+      await showTree.click()
+      await expect(page.getByRole("button", { name: "Hide model tree", exact: true })).toBeVisible()
     }
   }
   await expect(page.locator("[data-folder-id]")).toHaveCount(0)
