@@ -1,3 +1,4 @@
+import { readDatumPointFeatureParameters } from "./datum-point"
 import type { FeatureRecord } from "./feature-graph"
 import { featureTypeKey } from "./feature-type-contracts"
 import type { FeatureId } from "./identifiers"
@@ -30,6 +31,7 @@ import {
   readMirrorFeatureParametersV3,
 } from "./part-design-mirror"
 import { readPatternFeatureParameters, readPatternFeatureParametersV2 } from "./part-design-pattern"
+import { readPatternFeatureParametersV3 } from "./part-design-pattern-path"
 import { readPlacementFeatureParameters } from "./part-design-placement"
 import { readPressPullFeatureParameters } from "./part-design-press-pull"
 import { readScaleFeatureParameters } from "./part-design-scale"
@@ -38,7 +40,6 @@ import { readSplitFeatureParameters, readSplitFeatureParametersV2 } from "./part
 import { booleanBodyDependencyIds, readBooleanFeatureParametersV2 } from "./part-design-subtract"
 import { readSweepFeatureParameters } from "./part-design-sweep"
 import { readThreadFeatureParameters } from "./part-design-thread"
-import { readDatumPointFeatureParameters } from "./datum-point"
 import { isReferenceGeometryFeature, readDatumPlaneFeatureParameters } from "./reference-geometry"
 
 const independentBodyReaders = [
@@ -72,6 +73,7 @@ const exactTargetReaders = [
   (feature: FeatureRecord) => readMirrorFeatureParametersV3(feature)?.targetBody,
   (feature: FeatureRecord) => readPatternFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readPatternFeatureParametersV2(feature)?.targetBody,
+  (feature: FeatureRecord) => readPatternFeatureParametersV3(feature)?.targetBody,
   (feature: FeatureRecord) => readShellFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readDraftFeatureParameters(feature)?.targetBody,
   (feature: FeatureRecord) => readScaleFeatureParameters(feature)?.targetBody,
@@ -85,6 +87,7 @@ const supportAwareTargetReaders = [
   readFilletFeatureParametersV3,
   readSplitFeatureParametersV2,
   readPatternFeatureParametersV2,
+  readPatternFeatureParametersV3,
 ]
 function exactBodyTarget(feature: FeatureRecord) {
   for (const read of exactTargetReaders) {

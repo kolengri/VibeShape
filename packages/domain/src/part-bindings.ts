@@ -12,6 +12,7 @@ import {
   readPatternFeatureParameters,
   readPatternFeatureParametersV2,
 } from "./part-design-pattern"
+import { patternFeatureTypeV3, readPatternFeatureParametersV3 } from "./part-design-pattern-path"
 import {
   classifyPartOperation,
   featureResultBody,
@@ -176,12 +177,15 @@ function resolvedPartOperation(
   variables: ReadonlyMap<string, EvaluatedVariable>,
 ): PartOperation | null {
   if (
-    ![patternFeatureType.type, patternFeatureTypeV2.type].some(
+    ![patternFeatureType.type, patternFeatureTypeV2.type, patternFeatureTypeV3.type].some(
       (type) => featureTypeKey(feature.type) === featureTypeKey(type),
     )
   )
     return classifyPartOperation(feature)
-  const pattern = readPatternFeatureParameters(feature) ?? readPatternFeatureParametersV2(feature)
+  const pattern =
+    readPatternFeatureParameters(feature) ??
+    readPatternFeatureParametersV2(feature) ??
+    readPatternFeatureParametersV3(feature)
   if (!pattern) return null
   const resolved = resolveQuantityExpression(pattern.count, variables)
   const count = resolved.ok ? patternCountSchema.safeParse(resolved.quantity) : null

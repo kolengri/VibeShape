@@ -85,7 +85,8 @@ export function readPatternFeatureParameters(
 }
 type VariableValues = Parameters<NonNullable<TrustedFeatureTypeHandler["resolveParameters"]>>[1]
 type ResolutionFailure = Extract<FeatureParameterResolution, { ok: false }>
-function resolveField<Q extends Quantity>(
+/** Resolves one quantity expression and re-validates it against its bounded schema. */
+export function resolvePatternField<Q extends Quantity>(
   quantity: Q,
   schema: z.ZodType<Q>,
   path: string,
@@ -117,7 +118,12 @@ function resolveCenter(
 ) {
   const resolved = { ...center }
   for (const axis of ["x", "y", "z"] as const) {
-    const field = resolveField(center[axis], centerCoordinateSchema, `center.${axis}`, variables)
+    const field = resolvePatternField(
+      center[axis],
+      centerCoordinateSchema,
+      `center.${axis}`,
+      variables,
+    )
     if (!field.ok) return field
     resolved[axis] = field.quantity
   }
@@ -125,12 +131,17 @@ function resolveCenter(
 }
 function resolveGeometry(parameters: PatternFeatureParameters, variables: VariableValues) {
   if (parameters.kind === "linear") {
-    const spacing = resolveField(parameters.spacing, patternSpacingSchema, "spacing", variables)
+    const spacing = resolvePatternField(
+      parameters.spacing,
+      patternSpacingSchema,
+      "spacing",
+      variables,
+    )
     return spacing.ok
       ? { ok: true as const, parameters: { ...parameters, spacing: spacing.quantity } }
       : spacing
   }
-  const angle = resolveField(parameters.angle, patternAngleSchema, "angle", variables)
+  const angle = resolvePatternField(parameters.angle, patternAngleSchema, "angle", variables)
   if (!angle.ok) return angle
   const center = resolveCenter(parameters.center, variables)
   return center.ok
@@ -146,7 +157,7 @@ export const patternFeatureTypeHandler: TrustedFeatureTypeHandler = {
   resolveParameters(parameters, variables) {
     const parsed = patternFeatureParametersSchema.safeParse(parameters)
     if (!parsed.success) return { ok: true, parameters }
-    const count = resolveField(parsed.data.count, patternCountSchema, "count", variables)
+    const count = resolvePatternField(parsed.data.count, patternCountSchema, "count", variables)
     if (!count.ok) return count
     const geometry = resolveGeometry({ ...parsed.data, count: count.quantity }, variables)
     if (!geometry.ok) return geometry
@@ -225,13 +236,13 @@ export const patternFeatureTypeHandlerV2: TrustedFeatureTypeHandler = {
   resolveParameters(parameters, variables) {
     const parsed = patternFeatureParametersV2Schema.safeParse(parameters)
     if (!parsed.success) return { ok: true, parameters }
-    const count = resolveField(parsed.data.count, patternCountSchema, "count", variables)
+    const count = resolvePatternField(parsed.data.count, patternCountSchema, "count", variables)
     if (!count.ok) return count
     const path = parsed.data.kind === "linear" ? "spacing" : "angle"
     const field =
       parsed.data.kind === "linear"
-        ? resolveField(parsed.data.spacing, patternSpacingSchema, path, variables)
-        : resolveField(parsed.data.angle, patternAngleSchema, path, variables)
+        ? resolvePatternField(parsed.data.spacing, patternSpacingSchema, path, variables)
+        : resolvePatternField(parsed.data.angle, patternAngleSchema, path, variables)
     if (!field.ok) return field
     const result = patternFeatureParametersV2Schema.safeParse({
       ...parsed.data,

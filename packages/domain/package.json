@@ -38,6 +38,7 @@
     "./part-design": "./src/part-design.ts",
     "./part-design-hole": "./src/part-design-hole.ts",
     "./part-design-placement": "./src/part-design-placement.ts",
+    "./part-design-pattern-path": "./src/part-design-pattern-path.ts",
     "./part-design-mirror": "./src/part-design-mirror.ts",
     "./part-design-body-combination": "./src/part-design-body-combination.ts",
     "./rectangle-sketch": "./src/rectangle-sketch.ts",

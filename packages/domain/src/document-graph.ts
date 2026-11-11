@@ -82,6 +82,7 @@ import {
   readPatternFeatureParameters,
   readPatternFeatureParametersV2,
 } from "./part-design-pattern"
+import { patternFeatureTypeV3, readPatternFeatureParametersV3 } from "./part-design-pattern-path"
 import { placementFeatureType, readPlacementFeatureParameters } from "./part-design-placement"
 import { pressPullFeatureType, readPressPullFeatureParameters } from "./part-design-press-pull"
 import { readScaleFeatureParameters, scaleFeatureType } from "./part-design-scale"
@@ -309,6 +310,7 @@ const sketchSolidFeatureTypeKeys = new Set([
   featureTypeKey(loftFeatureTypeV2.type),
   featureTypeKey(loftFeatureTypeV3.type),
   featureTypeKey(sweepFeatureType.type),
+  featureTypeKey(patternFeatureTypeV3.type),
 ])
 
 function sketchSolidSemanticInputs(feature: VersionedFeatureRecord) {
@@ -326,6 +328,7 @@ const dependencyModelParameterReaders = new Map<string, (feature: FeatureRecord)
   [featureTypeKey(loftFeatureTypeV2.type), readLoftFeatureParameters],
   [featureTypeKey(loftFeatureTypeV3.type), readLoftFeatureParametersV3],
   [featureTypeKey(sweepFeatureType.type), readSweepFeatureParameters],
+  [featureTypeKey(patternFeatureTypeV3.type), readPatternFeatureParametersV3],
   ...[...extrusionTypeKeys].map((typeKey) => [typeKey, readExtrusionFeatureParameters] as const),
   ...[...revolveTypeKeys].map((typeKey) => [typeKey, readRevolveFeatureParameters] as const),
 ])

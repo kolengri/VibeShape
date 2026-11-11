@@ -34,6 +34,10 @@ import {
   loftV3SupportBodies,
   readLoftFeatureParametersV3,
 } from "@vibeshape/domain/part-design-loft-v3"
+import {
+  type PatternFeatureParametersV3,
+  readPatternFeatureParametersV3,
+} from "@vibeshape/domain/part-design-pattern-path"
 import { usesSlottedBodyInputs } from "@vibeshape/domain/part-design-subtract"
 import { readSweepFeatureParameters } from "@vibeshape/domain/part-design-sweep"
 import { isOrphanedModelReference, isSketchExternalModelReference } from "@vibeshape/domain/sketch"
@@ -847,6 +851,19 @@ export function expectedSketchFeatureDependencyIds(
   ]
 }
 
+/** The exact target body leads; sketch-path owners follow in their first-occurrence order. */
+export function expectedPathPatternDependencyIds(
+  document: DocumentSnapshot,
+  parameters: Pick<PatternFeatureParametersV3, "targetBody" | "path">,
+): readonly FeatureId[] {
+  return [
+    ...new Set([
+      parameters.targetBody.featureId,
+      ...expectedSketchFeatureDependencyIds(document, [parameters.path.sketchId]),
+    ]),
+  ]
+}
+
 export function expectedSketchFeatureReferences(
   document: DocumentSnapshot,
   sketchIds: readonly string[],
@@ -899,6 +916,8 @@ function documentSketchSchedulingDependencies(document: DocumentSnapshot, featur
       [sweep.profile.sketchId, sweep.path.sketchId],
       feature.references.map(({ featureId }) => featureId),
     )
+  const pathPattern = readPatternFeatureParametersV3(feature)
+  if (pathPattern) return expectedPathPatternDependencyIds(document, pathPattern)
   const savedSketch = savedPointOrLineSketchId(feature)
   if (savedSketch) return sketchModelFeatureIds(document, savedSketch)
   const extrusion = readExtrusionFeatureParameters(feature)

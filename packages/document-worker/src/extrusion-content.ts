@@ -56,6 +56,7 @@ import {
 } from "./external-sketch-references"
 import { prepareExtrusionEndContent } from "./extrusion-end-content"
 import { prepareFdmContent } from "./fdm-content"
+import { isPathPatternFeature, preparePathPatternFeatureContent } from "./pattern-path-content"
 import {
   prepareReferenceSupportedFeatureContent,
   shouldPrepareReferenceFrameFeatureContent,
@@ -557,7 +558,7 @@ async function prepareFeatureContent(
     modelMaterializationCache,
   })
   if (parametric) return parametric
-  if (shouldPrepareSweepLoftFeatureContent(feature)) {
+  if (shouldPrepareSweepLoftFeatureContent(feature) || isPathPatternFeature(feature)) {
     const sketchInput = {
       document,
       features,
@@ -567,13 +568,17 @@ async function prepareFeatureContent(
       solveSketch,
       solvedBySketchId,
     }
-    return prepareSweepLoftFeatureContent({
+    const pathInput = {
       document,
       feature,
       features,
       geometry,
-      solveSketch: (sketch) => solveFeatureSketch(sketchInput, sketch),
-    })
+      solveSketch: (sketch: SketchRecord) => solveFeatureSketch(sketchInput, sketch),
+    }
+    return (
+      (await preparePathPatternFeatureContent(pathInput)) ??
+      prepareSweepLoftFeatureContent(pathInput)
+    )
   }
   const datumPlane = readDatumPlaneFeatureParameters(feature)
   if (datumPlane) {
@@ -908,7 +913,8 @@ export function shouldPrepareDocumentFeatureContent(feature: FeatureRecord) {
       readHoleFeatureParameters(feature) ||
       readFdmFeatureParameters(feature) ||
       typeof readThreadFeatureParameters(feature)?.axis === "object" ||
-      shouldPrepareSweepLoftFeatureContent(feature),
+      shouldPrepareSweepLoftFeatureContent(feature) ||
+      isPathPatternFeature(feature),
   )
 }
 
