@@ -29,7 +29,11 @@ test.describe("foundation CAD shell", () => {
     ).toBeVisible()
     await expect(page.getByRole("region", { name: "3D viewport" })).toBeVisible()
     await expect(page.getByRole("complementary", { name: "Task panel" })).toBeVisible()
-    await expect(page.locator("main > footer")).toContainText("Ready")
+    await expect(
+      page
+        .locator("main footer")
+        .filter({ has: page.getByRole("status").filter({ hasText: /^Selection: / }) }),
+    ).toContainText("Ready")
   })
 
   test("orbits the 3D viewport with primary drag without accepting a sketch plane", async ({
@@ -84,7 +88,9 @@ test.describe("foundation CAD shell", () => {
 
     const xzPick = await selectIdleOriginPlaneInViewport(page, "xz")
     const viewport = page.getByRole("region", { name: "3D viewport" })
-    await expect(page.locator("main > footer")).toContainText("Selection: XZ plane")
+    await expect(page.getByRole("status").filter({ hasText: /^Selection: / })).toContainText(
+      "Selection: XZ plane",
+    )
     await viewport.getByRole("button", { name: "Hide XZ plane" }).click()
     await expect(viewport).not.toHaveAttribute("data-origin-plane-selection")
     await page.mouse.click(xzPick.x, xzPick.y)

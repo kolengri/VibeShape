@@ -51,7 +51,7 @@ test.describe("Box parameters", () => {
       .toBe(true)
     const canvasBounds = await viewport.locator("canvas").boundingBox()
     if (!canvasBounds) throw new Error("The geometry canvas has no measurable bounds.")
-    const statusBar = page.locator("main > footer")
+    const statusBar = page.getByRole("status").filter({ hasText: /^Selection: / })
     await expect
       .poll(async () => {
         await viewport.locator("canvas").click({

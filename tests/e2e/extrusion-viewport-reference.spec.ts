@@ -105,7 +105,9 @@ test("anchors and drags Extrude at an offset profile on a tilted support", async
   const bounds = await canvas.boundingBox()
   if (!bounds) throw new Error("The datum-plane canvas must be measurable.")
   await canvas.click({ position: { x: bounds.width * 0.5, y: bounds.height * 0.5 } })
-  await expect(page.locator("main > footer")).toContainText(/Selection: Datum plane 1 · Face \d+/)
+  await expect(page.getByRole("status").filter({ hasText: /^Selection: / })).toContainText(
+    /Selection: Datum plane 1 · Face \d+/,
+  )
   await page
     .getByRole("complementary", { name: "Task panel", exact: true })
     .getByRole("button", { name: "Create sketch", exact: true })
