@@ -26,13 +26,11 @@ export async function enableLocalAi(page: Page) {
 }
 
 /**
- * Waits until a remembered local MCP session has reconnected after a reload. Stop AI is also shown
- * while the session is still recovering, when the bridge rejects tool calls as suspended.
+ * Waits until a remembered local MCP session has reconnected after a reload. The approval control
+ * renders only for a connected session; Stop AI alone is also shown while the session is still
+ * recovering and the bridge rejects tool calls as suspended.
  */
 export async function expectLocalAiReconnected(page: Page) {
-  await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
-    timeout: 30_000,
-  })
   await expect(
     page.getByRole("button", { name: "Local MCP connection and approval mode", exact: true }),
   ).toBeVisible({ timeout: 30_000 })
