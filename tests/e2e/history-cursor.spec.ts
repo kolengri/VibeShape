@@ -87,6 +87,8 @@ async function reorder(page: Page, source: string, target: string) {
   await page.mouse.down()
   await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 15 })
   await page.mouse.up()
+  // The drop animation keeps the dragged row beside its placeholder until it settles.
+  await expect(page.locator("[data-dnd-dropping], [data-dnd-placeholder]")).toHaveCount(0)
 }
 for (const detailed of [false, true])
   test(`keeps the rollback divider working after reordering during History traversal (${detailed ? "Details" : "compact"})`, async ({
