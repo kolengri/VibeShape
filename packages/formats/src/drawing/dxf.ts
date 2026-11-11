@@ -20,20 +20,36 @@ const DXF_LAYERS: Readonly<
 const DEGREES = 180 / Math.PI
 
 /**
- * R12 TEXT is single-byte and interprets `%%` control codes and `\U+XXXX` escapes. Users' percent
- * signs become `%%%` and backslashes `\U+005C`, so typed codes print literally; Ø uses the R12
- * diameter code `%%c`; other characters outside printable ASCII use `\U+XXXX`, and characters
- * beyond the Basic Multilingual Plane, which the four-digit escape cannot carry, become `?`.
+ * R12 TEXT is single-byte and interprets `%%` control codes and `\U+`/`\M+` escapes. A lone `%`
+ * is literal everywhere, so only a `%` next to another `%` or directly before a generated `%%c`
+ * becomes the `%%%` percent code, and a backslash becomes `\U+005C` only before `U+` or `M+`.
+ * This keeps ordinary text such as "PLA 20%" readable in readers that ignore control codes. Ø uses
+ * the R12 diameter code `%%c`; other characters outside printable ASCII use `\U+XXXX`, and
+ * characters beyond the Basic Multilingual Plane, which the four-digit escape cannot carry, become
+ * `?`.
  */
 function dxfText(value: string) {
-  return [...value].map(dxfCharacter).join("")
+  const characters = [...value]
+  return characters
+    .map((character, index) =>
+      dxfCharacter(character, characters[index - 1], characters[index + 1], characters[index + 2]),
+    )
+    .join("")
 }
 
-function dxfCharacter(character: string) {
-  const code = character.codePointAt(0) ?? 63
-  if (character === "%") return "%%%"
-  if (character === "\\") return "\\U+005C"
+function dxfCharacter(
+  character: string,
+  previous: string | undefined,
+  next: string | undefined,
+  afterNext: string | undefined,
+) {
+  if (character === "%") return previous === "%" || next === "%" || next === "Ø" ? "%%%" : "%"
+  if (character === "\\")
+    return (next === "U" || next === "u" || next === "M" || next === "m") && afterNext === "+"
+      ? "\\U+005C"
+      : "\\"
   if (character === "Ø") return "%%c"
+  const code = character.codePointAt(0) ?? 63
   if (code >= 32 && code < 127) return character
   if (code > 0xffff) return "?"
   return `\\U+${code.toString(16).toUpperCase().padStart(4, "0")}`

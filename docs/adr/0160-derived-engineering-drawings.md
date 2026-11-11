@@ -82,7 +82,9 @@ English source catalog.
   block.
 - DXF AutoCAD R12 (AC1009) ASCII at sheet scale in millimetres with layers VISIBLE, HIDDEN
   (HIDDEN line type), DIMENSIONS, TITLE and FRAME. Lines, circles and arcs stay exact; arrows are
-  SOLID entities. Text escapes typed `%` as `%%%` and `\` as `\U+005C`, writes Ø as `%%c`, other
+  SOLID entities. Text writes `%%%` only for a `%` next to another `%` or before a generated `%%c` (a lone
+  `%` stays literal for readers that ignore control codes), writes `\` as `\U+005C` only before
+  `U+` or `M+`, writes Ø as `%%c`, other
   non-ASCII characters as `\U+XXXX` and characters beyond the Basic Multilingual Plane as `?`. R12
   cannot carry line weights.
 - PDF 1.4, one vector page, standard Helvetica with WinAnsi encoding (not embedded); characters

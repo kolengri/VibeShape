@@ -279,13 +279,23 @@ describe("drawing writers", () => {
   })
 
   it("keeps typed DXF control codes literal and uses the R12 diameter code", () => {
-    const title = "50% %%c \\U+0041 Ø \u{1D538}"
+    const title = "50% %%c \\U+0041 \\M+1 %Ø a\\b \u{1D538}"
     const dxf = writeDrawingDxf(
       sheetFor({ titleBlock: { title, drawingNumber: "", author: "", date: "", material: "" } }),
     )
-    expect(dxf).toContain("\r\n1\r\n50%%% %%%%%%c \\U+005CU+0041 %%c ?\r\n")
+    expect(dxf).toContain("\r\n1\r\n50% %%%%%%c \\U+005CU+0041 \\U+005CM+1 %%%%%c a\\b ?\r\n")
     expect(dxf).toContain("\r\n1\r\n%%c10\r\n")
     expect([...dxf].every((character) => character.charCodeAt(0) < 128)).toBe(true)
+  })
+
+  it("leaves a lone percent sign literal for readers that ignore control codes", () => {
+    const dxf = writeDrawingDxf(
+      sheetFor({
+        titleBlock: { title: "Box", drawingNumber: "", author: "", date: "", material: "PLA 20%" },
+      }),
+    )
+    expect(dxf).toContain("\r\n1\r\nPLA 20%\r\n")
+    expect(dxf).not.toContain("%%%")
   })
 
   it("writes a structurally valid single-page vector PDF", () => {
