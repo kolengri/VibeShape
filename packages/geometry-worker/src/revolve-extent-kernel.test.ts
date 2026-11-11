@@ -278,6 +278,52 @@ describe("Revolve v8 dynamic endpoints", () => {
     expect(diagnostic.message).toContain("first contact")
   })
 
+  // The blocker's z = 0 face lies in the sketch plane across the axis, reached after a half turn.
+  // Caps are half-planes, so that coplanar contact must not count as part of the start cap.
+  const farSide = () => blocker([-5.5, 2.5, 0], [9, 15, 10])
+
+  it("stops at a body first reached in the sketch plane across the axis", async () => {
+    await evaluate(farSide())
+    const result = await evaluate(
+      revolveInput(revolveContent({ endCondition: bodyEnd }), [boxDependency]),
+    )
+    expect(result.shape.volume).toBeCloseTo(pappus(Math.PI, 2, 5, 4), 5)
+    expect(result.shape.bounds.max[2]).toBeLessThan(TOLERANCE)
+    expect(result.shape.bounds.min[0]).toBeCloseTo(-5, 6)
+  })
+
+  it("stops at a face first reached in the sketch plane across the axis", async () => {
+    const box = await evaluate(farSide())
+    const endCondition = { ...bodyEnd, kind: "up-to-face", face: face(box, [0, 0, -1], 0) }
+    const result = await evaluate(revolveInput(revolveContent({ endCondition }), [boxDependency]))
+    expect(result.shape.volume).toBeCloseTo(pappus(Math.PI, 2, 5, 4), 5)
+  })
+
+  it("stops at a contact lying in the overrun cap plane across the axis", async () => {
+    // Rotating the half-turn blocker by -1 degree about +Y moves its contact face to 179 degrees,
+    // the same infinite plane as the 359-degree overrun cap.
+    await evaluate(farSide())
+    const placedHash = "d".repeat(64)
+    await evaluate(
+      featureInput({
+        id: id(3),
+        typeId: "placement",
+        schemaVersion: 1,
+        contentHash: placedHash,
+        parameters: { translation: [0, 0, 0], rotation: [0, -DEG, 0] },
+        dependencies: [boxDependency],
+      }),
+    )
+    const placed = { featureId: id(3), contentHash: placedHash, outputRole: "result" }
+    const result = await evaluate(
+      revolveInput(
+        revolveContent({ endCondition: { ...bodyEnd, sourceContentHash: placedHash } }),
+        [placed],
+      ),
+    )
+    expect(result.shape.volume).toBeCloseTo(pappus(179 * DEG, 2, 5, 4), 5)
+  })
+
   it("fails clearly when the endpoint body is unreachable", async () => {
     await evaluate(blocker([-5, 22.5, -10], [10, 5, 9]))
     const diagnostic = await failure(

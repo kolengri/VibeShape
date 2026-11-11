@@ -11,7 +11,21 @@ import { createOcctBox, cutOcctShapes, intersectOcctShapes } from "./occt-shapes
 
 type Point = readonly [number, number, number]
 const dot = (a: Point, b: Point) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-function capArea(occt: OpenCascadeInstance, shape: Shape3D, origin: Point, normal: Point) {
+/**
+ * Swept tools whose caps are half-planes through an axis (Revolve) name each cap's overrun normal
+ * and the in-plane side its profile occupies, so coplanar faces across the axis are not caps.
+ */
+export type SweptCapOptions = Readonly<{ endNormal?: Point; startSide?: Point; endSide?: Point }>
+function onCapSide(delta: Point, side: Point | undefined) {
+  return side === undefined || dot(delta, side) > 1e-9
+}
+function capArea(
+  occt: OpenCascadeInstance,
+  shape: Shape3D,
+  origin: Point,
+  normal: Point,
+  side?: Point,
+) {
   let area = 0
   const faces = shape.faces
   try {
@@ -27,7 +41,8 @@ function capArea(occt: OpenCascadeInstance, shape: Shape3D, origin: Point, norma
         ]
         if (
           Math.abs(dot(delta, normal)) > 1e-5 ||
-          Math.abs(dot(direction.toTuple(), normal)) < 1 - 1e-6
+          Math.abs(dot(direction.toTuple(), normal)) < 1 - 1e-6 ||
+          !onCapSide(delta, side)
         )
           continue
         const properties = new occt.GProp_GProps_1()
@@ -67,10 +82,7 @@ function solids(occt: OpenCascadeInstance, shape: Shape3D): Shape3D[] {
     explorer.delete()
   }
 }
-/**
- * The unique bounded component must retain the complete start cap and lose the overrun cap.
- * A swept tool whose overrun cap is not parallel to its start cap supplies `endNormal`.
- */
+/** The unique bounded component must retain the complete start cap and lose the overrun cap. */
 export function terminateExtrusionAtBody(
   occt: OpenCascadeInstance,
   tool: Shape3D,
@@ -78,11 +90,11 @@ export function terminateExtrusionAtBody(
   start: Point,
   end: Point,
   normal: Point,
-  endNormal: Point = normal,
+  caps: SweptCapOptions = {},
 ) {
   const cut = cutOcctShapes(occt, tool, target)
   try {
-    return takeBoundedExtrusionPart(occt, tool, cut, start, end, normal, endNormal)
+    return takeBoundedExtrusionPart(occt, tool, cut, start, end, normal, caps)
   } finally {
     cut.delete()
   }
@@ -94,9 +106,9 @@ function takeBoundedExtrusionPart(
   start: Point,
   end: Point,
   normal: Point,
-  endNormal: Point,
+  caps: SweptCapOptions,
 ) {
-  const expected = capArea(occt, tool, start, normal)
+  const expected = capArea(occt, tool, start, normal, caps.startSide)
   if (expected <= 0) throw new Error("Extrusion start cap is unavailable.")
   let parts: Shape3D[] = []
   try {
@@ -107,9 +119,9 @@ function takeBoundedExtrusionPart(
         metrics.valid &&
         metrics.solidCount === 1 &&
         metrics.volume > 0 &&
-        Math.abs(capArea(occt, part, start, normal) - expected) <=
+        Math.abs(capArea(occt, part, start, normal, caps.startSide) - expected) <=
           Math.max(1e-7, expected * 1e-7) &&
-        capArea(occt, part, end, endNormal) <= 1e-7
+        capArea(occt, part, end, caps.endNormal ?? normal, caps.endSide) <= 1e-7
       )
     })
     if (candidates.length !== 1)
@@ -133,7 +145,7 @@ export function terminateExtrusionAtFace(
   start: Point,
   end: Point,
   normal: Point,
-  endNormal: Point = normal,
+  caps: SweptCapOptions = {},
 ) {
   const resources: { delete(): void }[] = []
   const own = <T extends { delete(): void }>(value: T) => {
@@ -155,7 +167,7 @@ export function terminateExtrusionAtFace(
     if (!cutter.IsDone()) throw new Error("OCCT could not build the extrusion face endpoint.")
     const cut = own(adoptOcctShape(cutter.Shape(), castOcctShape))
     const originalBoundary = prismBoundaryDescendants(cutter, tool, own)
-    const result = takeBoundedExtrusionPart(occt, tool, cut, start, end, normal, endNormal)
+    const result = takeBoundedExtrusionPart(occt, tool, cut, start, end, normal, caps)
     try {
       validateNewFaceCoverage(occt, result, support, originalBoundary, progress)
       return result

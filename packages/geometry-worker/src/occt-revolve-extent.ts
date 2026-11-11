@@ -49,35 +49,70 @@ export function revolveSweep(
   }
 }
 
-function rotate(vector: Point, axis: Point, angle: number): Point {
-  const cos = Math.cos(angle)
-  const sin = Math.sin(angle)
-  const dot = vector[0] * axis[0] + vector[1] * axis[1] + vector[2] * axis[2]
-  const cross: Point = [
-    axis[1] * vector[2] - axis[2] * vector[1],
-    axis[2] * vector[0] - axis[0] * vector[2],
-    axis[0] * vector[1] - axis[1] * vector[0],
-  ]
-  return [0, 1, 2].map(
-    (index) =>
-      (vector[index] ?? 0) * cos + (cross[index] ?? 0) * sin + (axis[index] ?? 0) * dot * (1 - cos),
-  ) as unknown as Point
-}
-
-/** Planes of the sketch-plane start cap and the overrun cap of a dynamic-endpoint sweep. */
+/** The sketch-plane start cap and the directed axis of a dynamic-endpoint sweep. */
 export function revolveEndpointCaps(
   parameters: Pick<RevolveFeatureContentParametersV8, "axisOrigin" | "axisDirection" | "frame">,
   sweep: RevolveSweep,
 ) {
-  const axis = parameters.axisDirection.map((value) => value * sweep.directionSign) as [
-    number,
-    number,
-    number,
-  ]
   return {
     origin: parameters.axisOrigin,
     startNormal: parameters.frame.normal,
-    endNormal: rotate(parameters.frame.normal, axis, REVOLVE_ENDPOINT_SWEEP_RADIANS),
+    axis: parameters.axisDirection.map((value) => value * sweep.directionSign) as unknown as Point,
+  }
+}
+type EndpointCaps = ReturnType<typeof revolveEndpointCaps>
+
+const sub = (a: Point, b: Point): Point => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+const dot = (a: Point, b: Point) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+/** Rotates a direction about the directed sweep axis through the overrun angle. */
+function overrunDirection(occt: OpenCascadeInstance, vector: Point, caps: EndpointCaps): Point {
+  const origin = new occt.gp_Pnt_3(...caps.origin)
+  const axisDirection = new occt.gp_Dir_4(...caps.axis)
+  const axis = new occt.gp_Ax1_2(origin, axisDirection)
+  const source = new occt.gp_Dir_4(...vector)
+  const rotated = source.Rotated(axis, REVOLVE_ENDPOINT_SWEEP_RADIANS)
+  try {
+    return [rotated.X(), rotated.Y(), rotated.Z()]
+  } finally {
+    for (const value of [rotated, source, axis, axisDirection, origin]) value.delete()
+  }
+}
+
+/**
+ * The radial direction, in the sketch plane, of the half-plane the profile occupies. Caps are
+ * half-planes through the axis; a coplanar face across the axis is never part of a cap.
+ */
+function startCapSide(tool: Shape3D, caps: EndpointCaps): Point {
+  const faces = tool.faces
+  try {
+    for (const face of faces) {
+      if (face.geomType !== "PLANE") continue
+      const center = face.center
+      const normal = face.normalAt()
+      try {
+        const delta = sub(center.toTuple() as Point, caps.origin)
+        if (
+          Math.abs(dot(delta, caps.startNormal)) > 1e-5 ||
+          Math.abs(dot(normal.toTuple() as Point, caps.startNormal)) < 1 - 1e-6
+        )
+          continue
+        const axial = dot(delta, caps.axis)
+        const radial: Point = [
+          delta[0] - caps.axis[0] * axial,
+          delta[1] - caps.axis[1] * axial,
+          delta[2] - caps.axis[2] * axial,
+        ]
+        const length = Math.hypot(...radial)
+        if (length > 1e-9) return [radial[0] / length, radial[1] / length, radial[2] / length]
+      } finally {
+        center.delete()
+        normal.delete()
+      }
+    }
+    throw new RevolveExtentError("The revolve start cap is unavailable.")
+  } finally {
+    for (const face of faces) face.delete()
   }
 }
 
@@ -86,30 +121,20 @@ export function terminateRevolveTool(
   occt: OpenCascadeInstance,
   tool: Shape3D,
   target: Shape3D,
-  caps: ReturnType<typeof revolveEndpointCaps>,
+  caps: EndpointCaps,
   face: Face | null,
 ) {
+  const startSide = startCapSide(tool, caps)
+  const options = {
+    endNormal: overrunDirection(occt, caps.startNormal, caps),
+    startSide,
+    endSide: overrunDirection(occt, startSide, caps),
+  }
+  const at = [caps.origin, caps.origin, caps.startNormal] as const
   try {
     return face
-      ? terminateExtrusionAtFace(
-          occt,
-          tool,
-          target,
-          face,
-          caps.origin,
-          caps.origin,
-          caps.startNormal,
-          caps.endNormal,
-        )
-      : terminateExtrusionAtBody(
-          occt,
-          tool,
-          target,
-          caps.origin,
-          caps.origin,
-          caps.startNormal,
-          caps.endNormal,
-        )
+      ? terminateExtrusionAtFace(occt, tool, target, face, ...at, options)
+      : terminateExtrusionAtBody(occt, tool, target, ...at, options)
   } catch (error) {
     throw new RevolveExtentError(
       face
