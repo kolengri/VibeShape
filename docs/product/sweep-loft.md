@@ -58,7 +58,9 @@ Set **Path type** to **Helix** to sweep along an exact helix instead of a sketch
 the [Coil](coil.md) axis, handedness, radius, pitch, turns or height and start angle, all
 expression-capable. The profile must be hole-free and already lie in a plane through the helix start,
 normal to its starting tangent; the panel shows the required lead-angle tilt. Turns whose profile
-span would overlap fail preview. Helix paths are stored as Sweep version 2; planar sketch paths keep
+span would overlap fail preview. Changing the helix radius, pitch, start angle, handedness or axis
+of a saved helical Sweep moves its start frame; re-orient the profile plane, which is not moved
+automatically. Helix paths are stored as Sweep version 2; planar sketch paths keep
 writing version 1, and existing version 1 records replay unchanged. Switching an edited Sweep between
 path types changes its stored version accordingly.
 

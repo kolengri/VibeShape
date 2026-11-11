@@ -20,8 +20,10 @@ helix. Use it for compression springs, wire coils, helical ribs and helical chan
   centered on the helix and normal to it.
 
 Every length, angle and count accepts a `#variable` expression. The section must not reach the axis,
-and adjacent turns must not touch: the pitch must exceed `s·L₁/(2πR)`, where `s` is the axial section
-size and `L₁` the length of one turn. The panel shows the minimum pitch when this rule fails.
+and adjacent turns must not touch. Points of the section nearer the axis climb faster than its center,
+so the required pitch is somewhat larger than the section height; the exact rule is in
+[ADR-0155](../adr/0155-exact-helix-coil-and-helical-sweep.md). The panel shows the minimum pitch when
+this rule fails.
 
 ## Behavior
 
@@ -38,8 +40,11 @@ multi-start coils are not modeled; trim ends with a downstream Split or Remove i
 
 Sweep can also follow a helix: choose **Path type → Helix** in the Sweep task panel and set the same
 helix parameters. Save the profile sketch on a plane through the helix start, normal to its starting
-tangent; the panel shows the required tilt (the lead angle `atan(pitch / (2π·radius))`). A datum plane
-with a rotation equal to that angle is the usual support. Preview never moves the profile. Holed
+tangent; the panel shows the required tilt (the lead angle `atan(pitch / (2π·radius))`). For a helix on
+the origin Z axis starting at +X, an XZ datum plane rotated about its x axis by +lead angle
+(right-hand) or −lead angle (left-hand) is the usual support. The profile is never moved: after
+changing the radius, pitch, start angle, handedness or axis, re-orient that datum plane or the
+preview fails. Preview never moves the profile. Holed
 profiles are not supported on helix paths. See [Sweep and Loft](sweep-loft.md).
 
 ## Automation

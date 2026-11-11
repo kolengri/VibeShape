@@ -1228,6 +1228,59 @@ describe("helical Sweep v2 preparation", () => {
     })
   })
 
+  it.each([
+    ["right", 1, true],
+    ["right", -1, false],
+    ["left", -1, true],
+  ] as const)(
+    "accepts a %s-handed profile on an XZ datum rotated by sign %i × lead angle: %s",
+    async (handedness, sign, accepted) => {
+      // Origin Z helix starting at +X: rotate the XZ plane (normal −Y) about its x axis.
+      const [radius, pitch] = [20, 10]
+      const lead = Math.atan2(pitch, 2 * Math.PI * radius)
+      const plane = featureRecordSchema.parse({
+        schemaVersion: 0,
+        id: id(810),
+        type: datumPlaneFeatureType.type,
+        parameters: {
+          mode: "offset",
+          support: { kind: "origin-plane", plane: "xz" },
+          offset: createLengthQuantity(0),
+          rotation: { axis: "x", angle: createAngleQuantity(sign * lead) },
+        },
+        dependencies: [],
+        references: [],
+        suppressed: false,
+      })
+      const profile = supported(rectangle(310, "xy", 2), 810)
+      const feature = featureRecordSchema.parse({
+        schemaVersion: 0,
+        id: id(902),
+        type: sweepFeatureTypeV2.type,
+        parameters: {
+          profile: selector(profile),
+          path: {
+            kind: "helix",
+            axis: { kind: "origin-axis", axis: "Z" },
+            handedness,
+            radius: createLengthQuantity(radius),
+            pitch: createLengthQuantity(pitch),
+            extent: { kind: "turns", turns: createScalarQuantity(2) },
+            startAngle: createAngleQuantity(0),
+          },
+        },
+        dependencies: [id(810)],
+        references: [planeReference(810)],
+        suppressed: false,
+      })
+      const prepared = await createDocumentFeatureContentPreparer(solve)({
+        document: document([profile], [plane, feature]),
+        feature,
+      })
+      expect(prepared?.ok).toBe(accepted)
+    },
+  )
+
   it("requires a scheduled helix-axis producer", async () => {
     const source = helicalFixture({
       axis: { kind: "datum-axis", featureId: id(800), axis: "normal" },
