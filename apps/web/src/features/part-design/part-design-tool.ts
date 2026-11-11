@@ -11,6 +11,7 @@ import {
   cylinderFeatureType,
   datumPlaneFeatureType,
   datumPlaneFeatureTypeV1,
+  datumPointFeatureType,
   type FeatureId,
   type FeatureRecord,
   featureBodyDependencyIds,
@@ -126,6 +127,8 @@ export type ActivePartDesignTool =
   | Readonly<{ kind: "edit-subtract"; featureId: FeatureId }>
   | Readonly<{ kind: "create-datum-plane"; support?: SketchFeatureFaceSupport }>
   | Readonly<{ kind: "edit-datum-plane"; featureId: FeatureId }>
+  | Readonly<{ kind: "create-datum-point" }>
+  | Readonly<{ kind: "edit-datum-point"; featureId: FeatureId }>
 
 export type ActivePrimitivePartDesignTool = Extract<
   ActivePartDesignTool,
@@ -283,6 +286,10 @@ export function isDatumPlaneFeature(feature: FeatureRecord) {
     hasFeatureType(feature, datumPlaneFeatureTypeV1.type) ||
     hasFeatureType(feature, datumPlaneFeatureType.type)
   )
+}
+
+export function isDatumPointFeature(feature: FeatureRecord) {
+  return hasFeatureType(feature, datumPointFeatureType.type)
 }
 
 function isPlacementFeature(feature: FeatureRecord) {
@@ -539,6 +546,7 @@ const editableFeatureTools = [
   [isChamferFeature, "edit-chamfer"],
   [isBooleanFeature, "edit-subtract"],
   [isDatumPlaneFeature, "edit-datum-plane"],
+  [isDatumPointFeature, "edit-datum-point"],
 ] as const satisfies readonly [
   (feature: FeatureRecord) => boolean,
   Extract<ActivePartDesignTool, { featureId: FeatureId }>["kind"],
@@ -552,7 +560,14 @@ export function editPartDesignTool(
     return { kind: "edit-connect-mounts", featureId: feature.id }
   if (isPressPullFeature(feature)) return { kind: "edit-press-pull", featureId: feature.id }
   const kind = editableFeatureTools.find(([matches]) => matches(feature))?.[1]
-  return kind ? { kind, featureId: feature.id } : null
+  if (!kind) return null
+  // TypeScript stops distributing object literals over unions above 25 members; the tuple
+  // table above already constrains every kind to an edit tool that takes a feature ID.
+  const tool: Readonly<{ kind: typeof kind; featureId: FeatureId }> = {
+    kind,
+    featureId: feature.id,
+  }
+  return tool as Extract<ActivePartDesignTool, { featureId: FeatureId }>
 }
 
 const commandByToolKind = {
@@ -610,6 +625,8 @@ const commandByToolKind = {
   "edit-subtract": "subtract",
   "create-datum-plane": "datum-plane",
   "edit-datum-plane": "datum-plane",
+  "create-datum-point": "datum-point",
+  "edit-datum-point": "datum-point",
   measure: "measure",
 } as const satisfies Record<ActivePartDesignTool["kind"], string>
 

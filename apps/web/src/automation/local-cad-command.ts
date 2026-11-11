@@ -1,6 +1,11 @@
 import { applyAutomationDraftCommandRequestSchema } from "@vibeshape/automation-api/drafts"
 import type { LocalOperation } from "@vibeshape/automation-api/local-tools"
-import { type CommandActor, datumPlaneFeatureType, featureRecordSchema } from "@vibeshape/domain"
+import {
+  type CommandActor,
+  datumPlaneFeatureType,
+  datumPointFeatureType,
+  featureRecordSchema,
+} from "@vibeshape/domain"
 import {
   booleanFeatureType,
   extrusionFeatureType,
@@ -87,6 +92,8 @@ type CadOperation = Extract<
       | "update_sweep"
       | "create_datum_plane"
       | "update_datum_plane"
+      | "create_datum_point"
+      | "update_datum_point"
       | "create_boolean"
       | "update_boolean"
       | "create_union"
@@ -115,6 +122,8 @@ const directCadFeatureTypes = {
   update_reference_mirror: mirrorFeatureTypeV3.type,
   create_datum_plane: datumPlaneFeatureType.type,
   update_datum_plane: datumPlaneFeatureType.type,
+  create_datum_point: datumPointFeatureType.type,
+  update_datum_point: datumPointFeatureType.type,
   create_boolean: booleanFeatureType.type,
   update_boolean: booleanFeatureType.type,
   create_union: unionFeatureTypeV2.type,

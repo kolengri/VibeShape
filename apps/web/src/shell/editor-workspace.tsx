@@ -229,6 +229,8 @@ const PREVIEWED_FEATURE_TOOL_KINDS: ReadonlySet<ActivePartDesignTool["kind"]> = 
   "edit-extrusion",
   "create-datum-plane",
   "edit-datum-plane",
+  "create-datum-point",
+  "edit-datum-point",
   "create-revolve",
   "edit-revolve",
   "create-box",
@@ -1873,6 +1875,7 @@ export type EditorWorkspaceActions = Readonly<{
   createPyramid: () => void
   createTorus: () => void
   createDatumPlane: () => void
+  createDatumPoint: () => void
   createExtrusion: () => Promise<boolean>
   createRevolve: () => Promise<boolean>
   createLoft: () => void

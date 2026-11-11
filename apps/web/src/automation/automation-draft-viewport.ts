@@ -1,6 +1,6 @@
 import type { AutomationDraftPreview } from "@vibeshape/automation-api/drafts"
 import type { DraftReviewInput } from "@vibeshape/automation-host/host"
-import { type DocumentSnapshot, readDatumPlaneFeatureParameters } from "@vibeshape/domain"
+import { type DocumentSnapshot, isReferenceGeometryFeature } from "@vibeshape/domain"
 import type { DocumentWorkerResponse, FeatureEvaluationEngineResult } from "@vibeshape/protocol"
 import { terminalModelBodies } from "../features/part-design/model-bodies"
 import type { AutomationReviewState } from "./automation-review-state"
@@ -44,7 +44,7 @@ export function createAutomationDraftViewport(
   const bodies = terminalModelBodies(snapshot.features, rebuild)
   if (!bodies) return null
   const datumIds = new Set<string>(
-    snapshot.features.filter(readDatumPlaneFeatureParameters).map(({ id }) => id),
+    snapshot.features.filter(isReferenceGeometryFeature).map(({ id }) => id),
   )
   return {
     draft: { ...draft },

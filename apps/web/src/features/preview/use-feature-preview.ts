@@ -5,7 +5,9 @@ import {
   type DocumentSnapshot,
   documentSnapshotSchema,
   type FeatureRecord,
+  isReferenceGeometryFeature,
   readDatumPlaneFeatureParameters,
+  readDatumPointFeatureParameters,
   readHoleFeatureParameters,
   readRevolveFeatureParameters,
 } from "@vibeshape/domain"
@@ -68,6 +70,7 @@ export type FeaturePreviewKind =
   | "edge-treatment"
   | "hole"
   | "datum-plane"
+  | "datum-point"
   | "extrusion"
   | "primitive"
   | "revolve"
@@ -157,9 +160,7 @@ export function createFeaturePreviewMeshes(
   committedGeometry: readonly PreviewGeometryIdentity[],
 ): readonly ViewerMesh[] {
   const datumIds = new Set<string>(
-    document.features
-      .filter((feature) => readDatumPlaneFeatureParameters(feature) !== null)
-      .map(({ id }) => id),
+    document.features.filter(isReferenceGeometryFeature).map(({ id }) => id),
   )
   const committedHashes = new Map(
     committedGeometry.map(({ contentHash, featureId }) => [featureId, contentHash]),
@@ -249,6 +250,7 @@ export function featurePreviewKind(candidate: FeatureRecord): FeaturePreviewKind
   if (isBooleanFeature(candidate)) return "subtract"
   if (readHoleFeatureParameters(candidate)) return "hole"
   if (readDatumPlaneFeatureParameters(candidate)) return "datum-plane"
+  if (readDatumPointFeatureParameters(candidate)) return "datum-point"
   if (readRevolveFeatureParameters(candidate)) return "revolve"
   if (isFilletFeature(candidate) || isChamferFeature(candidate)) return "edge-treatment"
   if (

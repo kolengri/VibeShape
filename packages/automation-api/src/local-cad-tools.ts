@@ -1,4 +1,8 @@
-import { datumPlaneParametersSchema } from "@vibeshape/domain"
+import {
+  datumPlaneParametersSchema,
+  datumPointParametersSchema,
+  datumPointSupportFeatureId,
+} from "@vibeshape/domain"
 import { type BodyReference, bodyReferenceSchema } from "@vibeshape/domain/body-reference"
 import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import { featureRecordSchema } from "@vibeshape/domain/feature-graph"
@@ -497,6 +501,31 @@ const datumPlane = z
       })
   })
 
+const datumPoint = z
+  .object({
+    ...feature,
+    dependencies: featureRecordSchema.shape.dependencies.max(1),
+    references: featureRecordSchema.shape.references.max(0),
+    parameters: datumPointParametersSchema,
+  })
+  .strict()
+  .superRefine((input, context) => {
+    const owner = datumPointSupportFeatureId(input.parameters)
+    const matches =
+      owner === null
+        ? input.dependencies.length === 0
+        : owner !== input.featureId &&
+          input.dependencies.length === 1 &&
+          input.dependencies[0] === owner
+    if (!matches)
+      context.addIssue({
+        code: "custom",
+        path: ["dependencies"],
+        message:
+          "Datum Point requires no inputs for coordinates, or exactly the producer of its body-bound reference.",
+      })
+  })
+
 const boolean = z
   .object({
     ...feature,
@@ -595,6 +624,8 @@ export const localCadInputs = {
   update_reference_mirror: referenceMirror,
   create_datum_plane: datumPlane,
   update_datum_plane: datumPlane,
+  create_datum_point: datumPoint,
+  update_datum_point: datumPoint,
   create_boolean: boolean,
   update_boolean: boolean,
   create_union: union,
@@ -652,6 +683,8 @@ export const localCadOperations = [
   z.object({ tool: z.literal("update_reference_mirror"), arguments: referenceMirror }).strict(),
   z.object({ tool: z.literal("create_datum_plane"), arguments: datumPlane }).strict(),
   z.object({ tool: z.literal("update_datum_plane"), arguments: datumPlane }).strict(),
+  z.object({ tool: z.literal("create_datum_point"), arguments: datumPoint }).strict(),
+  z.object({ tool: z.literal("update_datum_point"), arguments: datumPoint }).strict(),
   z.object({ tool: z.literal("create_boolean"), arguments: boolean }).strict(),
   z.object({ tool: z.literal("update_boolean"), arguments: boolean }).strict(),
   z.object({ tool: z.literal("create_union"), arguments: union }).strict(),

@@ -1,6 +1,6 @@
 import type { SketchDisplayRecord } from "@vibeshape/application/sketch-display"
 import {
-  readDatumPlaneFeatureParameters,
+  isReferenceGeometryFeature,
   type SketchEntity,
   type SketchProfileSelector,
   type SketchRecord,
@@ -206,11 +206,7 @@ export function viewerMeshes(
         ...(appearance?.color ? { color: appearance.color } : {}),
       }
     })
-  const datumIds = new Set<string>(
-    features
-      .filter((feature) => readDatumPlaneFeatureParameters(feature) !== null)
-      .map(({ id }) => id),
-  )
+  const datumIds = new Set<string>(features.filter(isReferenceGeometryFeature).map(({ id }) => id))
   const datumMeshes = rebuild.response.geometry
     .filter(({ featureId }) => datumIds.has(featureId) && !hiddenIds.has(featureId))
     .map(({ featureId, geometry }) => ({
@@ -1391,6 +1387,9 @@ type PreviewMessageKey =
   | "datumPreviewFailed"
   | "datumPreviewLoading"
   | "datumPreviewReady"
+  | "datumPointPreviewFailed"
+  | "datumPointPreviewLoading"
+  | "datumPointPreviewReady"
   | "previewFailed"
   | "previewLoading"
   | "previewReady"
@@ -1411,6 +1410,11 @@ const PREVIEW_MESSAGE_KEYS: Readonly<
     error: "datumPreviewFailed",
     loading: "datumPreviewLoading",
     ready: "datumPreviewReady",
+  },
+  "datum-point": {
+    error: "datumPointPreviewFailed",
+    loading: "datumPointPreviewLoading",
+    ready: "datumPointPreviewReady",
   },
   extrusion: {
     error: "previewFailed",

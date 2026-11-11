@@ -111,8 +111,9 @@ describe("Datum Point v1", () => {
       ok: true,
       identity: { feature: { parameters: { mode: "coordinates", position: [10, -2.5, 9] } } },
     })
-    expect(types.validateFeature(datumPoint(coordinates)).descriptor).toMatchObject({
-      classification: "reference",
+    expect(types.validateFeature(datumPoint(coordinates))).toMatchObject({
+      ok: true,
+      descriptor: { classification: "reference" },
     })
   })
 
@@ -152,11 +153,11 @@ describe("Datum Point v1", () => {
       expect(isReferenceGeometryFeature(point)).toBe(true)
       for (const dependencies of [[], [ownerId, ownerId.replace(/1$/, "9")]])
         expect(types.validateFeature(datumPoint({ mode, reference }, dependencies)).ok).toBe(false)
+      const { outputRole: _role, ...topoRef } = circleReference
       expect(
-        types.validateFeature({
-          ...point,
-          references: [{ ...circleReference, schemaVersion: 0 }],
-        } as FeatureRecord).ok,
+        types.validateFeature(
+          featureRecordSchema.parse({ ...point, references: [{ ...topoRef, schemaVersion: 0 }] }),
+        ).ok,
       ).toBe(false)
     },
   )

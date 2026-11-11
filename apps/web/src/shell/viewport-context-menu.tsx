@@ -455,6 +455,7 @@ function ModelingActions({ props, menu }: { props: Props; menu: Menu }) {
       {command(editorCommandIds.createSketch, t("createSketch"))}
       {command(editorCommandIds.createExtrusion, t("extrude"))}
       {command(editorCommandIds.createDatumPlane, t("offsetPlane"))}
+      {command(editorCommandIds.createDatumPoint, t("datumPoint"))}
       {command(editorCommandIds.shellPart, t("shell"))}
       <MenuAction
         label={t("editFeature")}

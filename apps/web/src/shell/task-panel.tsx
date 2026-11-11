@@ -138,6 +138,7 @@ import { SurfaceTextureTaskPanel } from "../features/surface-texture/surface-tex
 import { currentAuthoredParts, currentAuthoredSnapshot } from "./authored-tree-state"
 import { BodyCombinationTaskPanel } from "./body-combination-task-panel"
 import { CadErrorPresentation } from "./cad-error-presentation"
+import { DatumPointTaskPanel } from "./datum-point-task-panel"
 import { FdmTaskPanel } from "./fdm-task-panel"
 import { HistoryFeatureRepair } from "./history-feature-repair"
 import { MirrorTaskPanel } from "./mirror-task-panel"
@@ -2013,6 +2014,8 @@ const activeTaskPanelByKind = {
   "edit-torus": BasicPrimitiveToolTaskPanel,
   "create-datum-plane": DatumPlaneToolTaskPanel,
   "edit-datum-plane": DatumPlaneToolTaskPanel,
+  "create-datum-point": DatumPointTaskPanel,
+  "edit-datum-point": DatumPointTaskPanel,
   "create-extrusion": ExtrusionToolTaskPanel,
   "edit-extrusion": ExtrusionToolTaskPanel,
   "create-revolve": RevolveToolTaskPanel,

@@ -3670,6 +3670,84 @@ export const DatumPlaneIcon = /* @__PURE__ */ coloredIcon("datum-plane", (instan
   </>
 ))
 
+export const DatumPointIcon = /* @__PURE__ */ coloredIcon("datum-point", (instanceId) => (
+  <>
+    <defs>
+      <linearGradient
+        id={`${instanceId}-frosted-datum-point-light-material-front`}
+        x1="12"
+        y1="12"
+        x2="48"
+        y2="56"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0" stopColor="var(--icon-material-front-start, #b6d3ee)" />
+        <stop offset="1" stopColor="var(--icon-material-front-end, #82afd8)" />
+      </linearGradient>
+      <mask
+        id={`${instanceId}-frosted-datum-point-light-visible-action`}
+        x="0"
+        y="0"
+        width="256"
+        height="256"
+        maskUnits="userSpaceOnUse"
+        style={{ maskType: "luminance" }}
+      >
+        <g transform="scale(4)">
+          <path
+            d="M32 22a10 10 0 1 1 0 20 10 10 0 1 1 0-20Z"
+            fill="black"
+            stroke="black"
+            strokeWidth="1.125"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M32 8v12M32 44v12M8 32h12M44 32h12"
+            fill="none"
+            stroke="white"
+            strokeWidth="2.50000"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </g>
+      </mask>
+    </defs>
+    <g opacity=".91" data-layer="material">
+      <g transform="scale(4)">
+        <path
+          d="M32 22a10 10 0 1 1 0 20 10 10 0 1 1 0-20Z"
+          fill={`url(#${instanceId}-frosted-datum-point-light-material-front)`}
+          stroke="var(--icon-geometry-ink, #5784b0)"
+          strokeWidth="1.93846"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M32 8v12M32 44v12M8 32h12M44 32h12"
+          fill="none"
+          stroke="var(--icon-action-stroke, #cd7b24)"
+          strokeWidth="2.50000"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </g>
+    </g>
+    <g mask={`url(#${instanceId}-frosted-datum-point-light-visible-action)`} data-layer="action">
+      <g transform="scale(4)">
+        <path
+          d="M32 8v12M32 44v12M8 32h12M44 32h12"
+          fill="none"
+          stroke="var(--icon-action-stroke, #cd7b24)"
+          strokeWidth="2.50000"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </g>
+    </g>
+  </>
+))
+
 export const TransformIcon = /* @__PURE__ */ coloredIcon("transform", (instanceId) => (
   <>
     <defs>

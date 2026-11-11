@@ -1828,6 +1828,8 @@ describe("remote MCP in workerd", () => {
         "request_quick_lightweighting",
         "create_datum_plane",
         "update_datum_plane",
+        "create_datum_point",
+        "update_datum_point",
         "create_boolean",
         "update_boolean",
         "create_union",
