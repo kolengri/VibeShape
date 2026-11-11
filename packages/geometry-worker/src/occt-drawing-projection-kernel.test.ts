@@ -155,6 +155,37 @@ describe("exact drawing projection", () => {
     }
   })
 
+  it("keeps the hidden slot floor behind a rib where visible step edges stop", () => {
+    // 100 x 30 x 30 block with a front step down to z = 20, a rib at x 55-70 filling the step,
+    // and a slot cut through from the back at z 20-25.
+    const parts = [
+      makeBox([0, 0, 0], [100, 30, 20]),
+      makeBox([0, 10, 20], [100, 30, 30]),
+      makeBox([55, 0, 20], [70, 10, 30]),
+      makeBox([-1, 15, 20], [101, 31, 25]),
+    ]
+    const [base, back, rib, slot] = parts
+    if (!base || !back || !rib || !slot) throw new Error("Missing probe parts.")
+    const stepped = base.fuse(back)
+    const ribbed = stepped.fuse(rib)
+    const probe = keep(ribbed.cut(slot))
+    for (const part of [...parts, stepped, ribbed]) part.delete()
+    const front = project(probe, "front")
+    const atFloor = (visibility: DrawingEdge["visibility"]) =>
+      front.edges
+        .filter(
+          (edge) =>
+            edge.visibility === visibility &&
+            edge.curve.kind === "line" &&
+            Math.abs(edge.curve.start[1] - 20) < 1e-6 &&
+            Math.abs(edge.curve.end[1] - 20) < 1e-6,
+        )
+        .map(({ curve }) => lineKey(curve as Line))
+        .sort()
+    expect(atFloor("visible")).toEqual(["0,20 55,20", "70,20 100,20"])
+    expect(atFloor("hidden")).toEqual(["55,20 70,20"])
+  })
+
   it("keeps arcs exact and counter-clockwise", () => {
     const quarter = keep(makeCylinder(10, 5, [0, 0, 0], [0, 0, 1]))
     const cutter = keep(makeBox([-20, -20, -1], [0, 20, 6]))
@@ -170,9 +201,11 @@ describe("exact drawing projection", () => {
   it("produces identical projections for identical input", () => {
     const shape = boxWithHole()
     const views = ["front", "isometric"] as const
-    expect(projectOcctDrawingViews(occt, shape.wrapped, views)).toEqual(
-      projectOcctDrawingViews(occt, shape.wrapped, views),
-    )
+    const projected = projectOcctDrawingViews(occt, shape.wrapped, views)
+    expect(projected).toEqual(projectOcctDrawingViews(occt, shape.wrapped, views))
+    // Pictorial views skip hidden-line extraction entirely.
+    expect(projected[1]?.edges.length).toBeGreaterThan(0)
+    expect(projected[1]?.edges.every(({ visibility }) => visibility === "visible")).toBe(true)
   })
 })
 

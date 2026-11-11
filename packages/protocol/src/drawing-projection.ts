@@ -37,7 +37,10 @@ export const DRAWING_VIEW_FRAMES: Readonly<
 /** Absolute chordal deviation of display polylines from projected free-form curves. */
 export const DRAWING_CHORD_TOLERANCE_MM = 0.01
 export const DRAWING_ANGULAR_TOLERANCE_RAD = 0.05
+/** Points per emitted polyline; longer sampled curves are split into chained polylines. */
 export const MAX_DRAWING_CURVE_POINTS = 4_096
+/** Samples one projected curve may need at the chordal tolerance before projection fails. */
+export const MAX_DRAWING_CURVE_SAMPLES = 65_536
 export const MAX_DRAWING_VIEW_EDGES = 50_000
 
 const coordinate = z.number().finite().min(-1_000_000).max(1_000_000)

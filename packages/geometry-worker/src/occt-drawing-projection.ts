@@ -7,7 +7,7 @@ import {
   type DrawingEdge,
   type DrawingViewId,
   type DrawingViewProjection,
-  MAX_DRAWING_CURVE_POINTS,
+  MAX_DRAWING_CURVE_SAMPLES,
   MAX_DRAWING_VIEW_EDGES,
 } from "@vibeshape/protocol"
 import type {
@@ -16,7 +16,7 @@ import type {
   TopAbs_ShapeEnum,
   TopoDS_Shape,
 } from "replicad-opencascadejs"
-import { straightenPolyline, suppressCoincidentEdges } from "./drawing-edge-cleanup"
+import { splitPolyline, suppressCoincidentEdges } from "./drawing-edge-cleanup"
 import { nativeScope, type OwnNative } from "./occt-native-scope"
 
 const LABEL = "Drawing projection"
@@ -78,6 +78,8 @@ function projectView(
     const shapes = own(new occt.HLRBRep_HLRToShape(handle))
     const result: DrawingEdge[] = []
     for (const extraction of EXTRACTIONS) {
+      // Pictorial views never show hidden lines, so their hidden compounds are not extracted.
+      if (view === "isometric" && extraction.visibility === "hidden") continue
       const compound = own(extraction.extract(shapes))
       if (compound.IsNull()) continue
       occt.BRepLib.BuildCurves3d_2(compound)
@@ -104,14 +106,15 @@ function collectEdges(
     ),
   )
   for (; explorer.More(); explorer.Next()) {
-    const curve = nativeScope(LABEL, (edgeOwn) => {
+    const curves = nativeScope(LABEL, (edgeOwn) => {
       const edge = edgeOwn(occt.TopoDS.Edge_1(edgeOwn(explorer.Current())))
-      return projectedCurve(occt, edgeOwn, edgeOwn(new occt.BRepAdaptor_Curve_2(edge)))
+      return projectedCurves(occt, edgeOwn, edgeOwn(new occt.BRepAdaptor_Curve_2(edge)))
     })
-    if (!curve) continue
-    if (result.length >= MAX_DRAWING_VIEW_EDGES)
-      throw new RangeError("The drawing view exceeds its projected edge budget.")
-    result.push({ visibility: extraction.visibility, edgeClass: extraction.edgeClass, curve })
+    for (const curve of curves) {
+      if (result.length >= MAX_DRAWING_VIEW_EDGES)
+        throw new RangeError("The drawing view exceeds its projected edge budget.")
+      result.push({ visibility: extraction.visibility, edgeClass: extraction.edgeClass, curve })
+    }
   }
 }
 
@@ -122,24 +125,25 @@ function pointAt(own: OwnNative, curve: BRepAdaptor_Curve, parameter: number): P
   return value
 }
 
-function projectedCurve(
+function projectedCurves(
   occt: OpenCascadeInstance,
   own: OwnNative,
   curve: BRepAdaptor_Curve,
-): DrawingCurve | null {
+): DrawingCurve[] {
   const first = curve.FirstParameter()
   const last = curve.LastParameter()
-  if (!Number.isFinite(first) || !Number.isFinite(last) || last <= first) return null
+  if (!Number.isFinite(first) || !Number.isFinite(last) || last <= first) return []
   const type = curve.GetType()
   if (type === occt.GeomAbs_CurveType.GeomAbs_Line) {
     const start = pointAt(own, curve, first)
     const end = pointAt(own, curve, last)
     return Math.hypot(end[0] - start[0], end[1] - start[1]) > 1e-9
-      ? { kind: "line", start, end }
-      : null
+      ? [{ kind: "line", start, end }]
+      : []
   }
-  if (type === occt.GeomAbs_CurveType.GeomAbs_Circle) return circularCurve(own, curve, first, last)
-  return polylineCurve(occt, own, curve)
+  if (type === occt.GeomAbs_CurveType.GeomAbs_Circle)
+    return [circularCurve(own, curve, first, last)]
+  return polylineCurves(occt, own, curve)
 }
 
 function circularCurve(
@@ -163,11 +167,17 @@ function circularCurve(
   return { kind: "arc", center, radius, startAngle, endAngle }
 }
 
-function polylineCurve(
+/**
+ * Samples a free-form projected curve within the chordal tolerance. Long curves are split into
+ * consecutive polylines of at most MAX_DRAWING_CURVE_POINTS points that share their end points, so
+ * the tolerance holds for every piece; curves needing more than MAX_DRAWING_CURVE_SAMPLES samples
+ * fail explicitly instead of being thinned.
+ */
+function polylineCurves(
   occt: OpenCascadeInstance,
   own: OwnNative,
   curve: BRepAdaptor_Curve,
-): DrawingCurve | null {
+): DrawingCurve[] {
   const sampler = own(
     new occt.GCPnts_TangentialDeflection_2(
       curve,
@@ -179,20 +189,17 @@ function polylineCurve(
     ),
   )
   const count = sampler.NbPoints()
-  if (count < 2) return null
-  const stride = Math.max(1, Math.ceil((count - 1) / (MAX_DRAWING_CURVE_POINTS - 1)))
+  if (count < 2) return []
+  if (count > MAX_DRAWING_CURVE_SAMPLES)
+    throw new RangeError("A projected curve needs more samples than the drawing budget allows.")
   const points: Point[] = []
-  for (let index = 1; index <= count; index += stride) {
+  for (let index = 1; index <= count; index += 1) {
     const point = own(sampler.Value(index))
-    points.push([point.X(), point.Y()])
-  }
-  if ((count - 1) % stride !== 0) {
-    const point = own(sampler.Value(count))
     points.push([point.X(), point.Y()])
   }
   if (!points.flat().every(Number.isFinite))
     throw new Error("A projected drawing point is not finite.")
-  return straightenPolyline(points)
+  return splitPolyline(points)
 }
 
 /** Tight sheet-plane extents of exact lines, circles and arcs, and of sampled polylines. */
