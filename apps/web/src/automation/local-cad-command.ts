@@ -37,7 +37,6 @@ import {
   holeFeatureParametersV2Schema,
   holeFeatureParametersV3Schema,
   holeFeatureParametersV4Schema,
-  holeFeatureType,
 } from "@vibeshape/domain/part-design-hole"
 import { loftFeatureType, loftFeatureTypeV2 } from "@vibeshape/domain/part-design-loft"
 import { loftFeatureTypeV3 } from "@vibeshape/domain/part-design-loft-v3"
@@ -164,8 +163,6 @@ const directCadFeatureTypes = {
   create_press_pull: pressPullFeatureTypeV2.type,
   update_press_pull: pressPullFeatureTypeV2.type,
   update_scale: scaleFeatureType.type,
-  create_hole: holeFeatureType.type,
-  update_hole: holeFeatureType.type,
   create_mirror: mirrorFeatureType.type,
   update_mirror: mirrorFeatureType.type,
   create_body_pattern: patternFeatureType.type,
@@ -179,15 +176,17 @@ const directCadFeatureTypes = {
   create_coil: coilFeatureType.type,
   update_coil: coilFeatureType.type,
 } as const
+type HoleOperation = Extract<CadOperation, { tool: "create_hole" | "update_hole" }>
+/** Holes route through `authoredHole`, which can keep a saved schema version. */
 function cadFeatureType(
-  operation: Exclude<CadOperation, { tool: "create_sketch" | "update_sketch" }>,
+  operation: Exclude<CadOperation, { tool: "create_sketch" | "update_sketch" } | HoleOperation>,
 ) {
   if (isFaceExtentExtrudeOperation(operation))
     return faceExtentExtrusionType(operation.arguments.parameters)
   if (isThreadOperation(operation)) return threadType(operation.arguments.parameters)
   const versioned = versionedCadFeatureType(operation)
   if (versioned) return versioned
-  if (isBodySelectionOperation(operation)) return bodySelectionFeatureType(operation)
+  if (isMirrorOperation(operation)) return mirrorCadFeatureType(operation.arguments.parameters)
   if (
     operation.tool === "create_extrude" ||
     operation.tool === "update_extrude" ||
@@ -254,18 +253,14 @@ function loftCadFeatureType(
       : loftFeatureType.type
 }
 
-function isBodySelectionOperation(
+function isMirrorOperation(
   operation: Exclude<CadOperation, { tool: "create_sketch" | "update_sketch" }>,
-): operation is Extract<
-  CadOperation,
-  { tool: "create_mirror" | "update_mirror" | "create_hole" | "update_hole" }
-> {
-  return (
-    operation.tool === "create_mirror" ||
-    operation.tool === "update_mirror" ||
-    operation.tool === "create_hole" ||
-    operation.tool === "update_hole"
-  )
+): operation is Extract<CadOperation, { tool: "create_mirror" | "update_mirror" }> {
+  return operation.tool === "create_mirror" || operation.tool === "update_mirror"
+}
+
+function isHoleOperation(operation: CadOperation): operation is HoleOperation {
+  return operation.tool === "create_hole" || operation.tool === "update_hole"
 }
 
 function isThreadOperation(
@@ -282,17 +277,13 @@ function threadType(
   return "origin" in parameters ? threadFeatureType.type : threadFeatureTypeV2.type
 }
 
-function bodySelectionFeatureType(
-  operation: Extract<
+function mirrorCadFeatureType(
+  parameters: Extract<
     CadOperation,
-    { tool: "create_mirror" | "update_mirror" | "create_hole" | "update_hole" }
-  >,
+    { tool: "create_mirror" | "update_mirror" }
+  >["arguments"]["parameters"],
 ) {
-  if (operation.tool === "create_mirror" || operation.tool === "update_mirror")
-    return "offset" in operation.arguments.parameters
-      ? mirrorFeatureTypeV2.type
-      : mirrorFeatureType.type
-  return authoredHoleFeatureType(null, operation.arguments.parameters)
+  return "offset" in parameters ? mirrorFeatureTypeV2.type : mirrorFeatureType.type
 }
 
 const FLAT_TIP_ANGLE = createAngleQuantity(180, "deg")
@@ -402,15 +393,17 @@ export function createLocalCadCommand(
     })
   }
   const featureInput = operation.arguments
-  const hole =
-    operation.tool === "create_hole" || operation.tool === "update_hole"
-      ? authoredHole(featureInput.parameters, savedType)
-      : null
+  const authored = isHoleOperation(operation)
+    ? authoredHole(operation.arguments.parameters, savedType)
+    : {
+        type: pressPullType(operation, savedType) ?? cadFeatureType(operation),
+        parameters: featureInput.parameters,
+      }
   const feature = featureRecordSchema.parse({
     schemaVersion: 0,
     id: featureInput.featureId,
-    type: hole?.type ?? pressPullType(operation, savedType) ?? cadFeatureType(operation),
-    parameters: hole?.parameters ?? featureInput.parameters,
+    type: authored.type,
+    parameters: authored.parameters,
     dependencies: featureInput.dependencies,
     references: featureInput.references,
     suppressed: featureInput.suppressed,

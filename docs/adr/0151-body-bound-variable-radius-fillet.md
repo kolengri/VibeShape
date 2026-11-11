@@ -70,6 +70,23 @@ that reorders an edge's endpoints moves its variable-radius start. The rule stay
 the current geometry, and the user can toggle Reverse. V3 failures do not run the V2 smaller-radius
 probe; they report a reduce-radius or reselection message.
 
+The rule compares coordinate differences, so an upstream translation never moves the start; only a
+rotation can. Persisted endpoint anchors, as proposed for projected sketch splines in ADR-0158, were
+evaluated as a replacement and not adopted:
+
+- Sketch anchors live in the sketch frame, which turns with its support. A body has no frame that
+  survives Placement, Pattern or Boolean history, so Fillet anchors would be model coordinates.
+  Pairing current endpoints with model-coordinate anchors reduces to the sign of the dot product
+  between the authored and current chords: it keeps the start through rotations below 90 degrees,
+  flips it beyond 90 degrees, and is ambiguous at 90 degrees.
+- A quarter-turn Placement is the most common rotation. Anchors would have to fail closed there,
+  turning a deterministic build into a repair task, while the coordinate rule still builds.
+- Anchors need a Fillet V4 schema, authoring-time endpoint capture in the editor and in both MCP
+  transports, and a repair path, for a guarantee that still does not cover large rotations.
+
+Reverse remains the repair for a rotated body. The decision should be revisited if bodies gain a
+persistent local frame that follows rigid transforms.
+
 ## Evidence
 
 Real-kernel worker tests cover:
@@ -79,6 +96,7 @@ Real-kernel worker tests cover:
   measured from fillet setbacks at each original corner;
 - variable-radius removal bounded by the constant start-radius and end-radius cases;
 - identical geometry after a reopened source with new native topology;
+- the same physical start after an upstream translation of the source body;
 - equivalence of a face target and its four boundary edges;
 - tangent-contour following on a rounded opening;
 - rejection of variable radius on tangent chains, closed rims and overlapping targets;

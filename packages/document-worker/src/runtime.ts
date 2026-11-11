@@ -803,7 +803,9 @@ export class DocumentWorkerRuntime {
         : {
             ok: false,
             diagnosticCode: evaluated.diagnostic.code,
-            ...(featureForwardsDiagnosticMessage(evaluation.content.feature.type)
+            // Only typed, user-actionable kernel messages replace the localized catalog advice.
+            ...(evaluated.diagnostic.userActionable &&
+            featureForwardsDiagnosticMessage(evaluation.content.feature.type)
               ? { diagnosticMessage: evaluated.diagnostic.message.slice(0, 1024) }
               : {}),
           }
