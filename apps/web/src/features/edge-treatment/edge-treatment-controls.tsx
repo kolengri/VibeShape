@@ -228,7 +228,9 @@ function SideFaceField({
         type="button"
         variant="outline"
         size="content"
-        className="min-w-0 justify-start py-1 text-left text-xs"
+        // The base Button never shrinks; this long prompt must wrap inside the narrow row instead
+        // of widening the scrolling list.
+        className="min-w-0 flex-1 shrink justify-start py-1 text-left text-xs"
         disabled={props.disabled}
         aria-label={t("pickSideFace", { edge: label })}
         aria-pressed={props.pick?.kind === "side-face" && props.pick.index === index}
