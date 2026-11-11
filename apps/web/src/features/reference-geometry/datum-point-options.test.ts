@@ -146,6 +146,19 @@ describe("datum point reference options", () => {
     expect(options.vertices[0]?.reference).not.toHaveProperty("semanticRole")
   })
 
+  it("treats coincident vertices on both sides of a neighbourhood cell boundary as ambiguous", () => {
+    // 5e-7 mm is a boundary of the 1e-7 mm cells; the pair lies 4e-9 mm apart across it.
+    const options = datumPointOptions(
+      snapshot,
+      rebuild([
+        vertex(0, [5e-7 - 2e-9, 0, 0]),
+        vertex(1, [5e-7 + 2e-9, 0, 0]),
+        vertex(2, [3, 0, 0]),
+      ]),
+    )
+    expect(options.vertices.map(({ position }) => position)).toEqual([[3, 0, 0]])
+  })
+
   it("offers exactly the vertices that resolve to themselves against every peer", () => {
     // Clusters closer than, at and beyond the 1e-7 mm tolerance exercise the neighbourhood bound.
     const offsets = [0, 4e-9, 5e-8, 1e-7, 2e-7, 1, 1 + 1e-9]
