@@ -19,6 +19,7 @@ import {
   compoundFeatureTypeV2,
   unionFeatureTypeV2,
 } from "@vibeshape/domain/part-design-body-combination"
+import { coilFeatureType } from "@vibeshape/domain/part-design-coil"
 import { draftFeatureType } from "@vibeshape/domain/part-design-draft"
 import { fdmFeatureType } from "@vibeshape/domain/part-design-fdm"
 import {
@@ -42,7 +43,7 @@ import { scaleFeatureType } from "@vibeshape/domain/part-design-scale"
 import { shellFeatureTypeV2 } from "@vibeshape/domain/part-design-shell"
 import { splitFeatureType, splitFeatureTypeV2 } from "@vibeshape/domain/part-design-split"
 import { booleanFeatureTypeV2 } from "@vibeshape/domain/part-design-subtract"
-import { sweepFeatureType } from "@vibeshape/domain/part-design-sweep"
+import { sweepFeatureType, sweepFeatureTypeV2 } from "@vibeshape/domain/part-design-sweep"
 import { threadFeatureType, threadFeatureTypeV2 } from "@vibeshape/domain/part-design-thread"
 
 type CadOperation = Extract<
@@ -91,6 +92,8 @@ type CadOperation = Extract<
       | "update_loft"
       | "create_sweep"
       | "update_sweep"
+      | "create_coil"
+      | "update_coil"
       | "create_datum_plane"
       | "update_datum_plane"
       | "create_boolean"
@@ -145,6 +148,8 @@ const directCadFeatureTypes = {
   update_loft: loftFeatureType.type,
   create_sweep: sweepFeatureType.type,
   update_sweep: sweepFeatureType.type,
+  create_coil: coilFeatureType.type,
+  update_coil: coilFeatureType.type,
 } as const
 function cadFeatureType(
   operation: Exclude<CadOperation, { tool: "create_sketch" | "update_sketch" }>,
@@ -153,6 +158,10 @@ function cadFeatureType(
     return faceExtentExtrusionType(operation.arguments.parameters)
   if (operation.tool.endsWith("_loft")) return loftCadFeatureType(operation.arguments.parameters)
   if (isThreadOperation(operation)) return threadType(operation.arguments.parameters)
+  if (operation.tool === "create_sweep" || operation.tool === "update_sweep")
+    return "kind" in operation.arguments.parameters.path
+      ? sweepFeatureTypeV2.type
+      : sweepFeatureType.type
   if (isBodySelectionOperation(operation)) return bodySelectionFeatureType(operation)
   if (
     operation.tool === "create_extrude" ||
