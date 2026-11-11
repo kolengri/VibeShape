@@ -8,7 +8,12 @@ import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import { featureIdSchema, surfaceTextureLayerIdSchema } from "../../packages/domain/src/identifiers"
 import { createDefaultSurfaceTextureLayer } from "../../packages/domain/src/surface-textures"
 import { readAuthoredVShape } from "../../packages/formats/src/vshape"
-import { enableLocalAi, openAiConnections, openAutoApplySetup } from "./application-menu-support"
+import {
+  enableLocalAi,
+  expectLocalAiReconnected,
+  openAiConnections,
+  openAutoApplySetup,
+} from "./application-menu-support"
 import { expect, test } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
 
@@ -111,7 +116,7 @@ test("authors full packed relief maps and exact faces through manual MCP review,
     await openAiConnections(page)
     await openAutoApplySetup(page)
     await page.getByRole("button", { name: "Enable auto-apply", exact: true }).click()
-    await expect(page.getByText("AI on · Auto-apply on", { exact: true })).toBeVisible()
+    await expect(page.getByText("AI access on · Auto-apply on", { exact: true })).toBeVisible()
     const initial = await readInfo()
     const parts = success(
       localToolOutputs.model_parts.parse(
@@ -250,9 +255,7 @@ test("authors full packed relief maps and exact faces through manual MCP review,
     const undone = await readInfo()
     expect(undone.summary.revision).toBe(removed.revision + 1)
     await page.reload()
-    await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible({
-      timeout: 30_000,
-    })
+    await expectLocalAiReconnected(page)
     const reloaded = await readInfo()
     expect(reloaded.summary.revision).toBe(undone.summary.revision)
     expect(

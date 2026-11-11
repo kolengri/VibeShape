@@ -5,7 +5,7 @@ import { IMPORT_UPLOAD_CHUNK_MAX_BYTES } from "../../packages/automation-api/src
 import { localToolOutputs } from "../../packages/automation-api/src/local-tools"
 import type { PlanarUploadInspection } from "../../packages/automation-api/src/planar-imports"
 import { createLengthQuantity } from "../../packages/domain/src/units"
-import { enableLocalAi } from "./application-menu-support"
+import { enableLocalAi, expectLocalAiReconnected } from "./application-menu-support"
 import { openProject, saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
 import { exportGeometry, requireSourceSnapshot } from "./source-import-ui-support"
@@ -197,7 +197,7 @@ test("imports SVG/DXF through paired bytes and manual analytical review, retains
       const restored = await saveProject(page)
       expect(restored.project.snapshot.sketches).toEqual(snapshot.sketches)
       revision = restored.project.snapshot.revision
-      await expect(page.getByRole("button", { name: "Stop AI", exact: true })).toBeVisible()
+      await expectLocalAiReconnected(page)
     }
     await extrudeSavedProfile(page, call, { revision, sketchId: svgId })
     const portable = await saveProject(page)
