@@ -44,10 +44,18 @@ so the span exceeds the first-order estimate `s / cos α` (which accepted overla
 example R = 5 mm, 8 × 2 mm rectangle, p = 2.02 mm, or R = 1 mm, ⌀1.9 mm, p = 1.994 mm).
 
 The rule is: every section point stays off the axis (`R − n > 0`, i.e. `R − w/2 > 0`), and
-**the pitch exceeds the exact meridian span** `max z − min z`. This is sufficient and exact:
-`z` increases strictly with `b`, so interior points never exceed the boundary; with `x > 0` a screw
-orbit meets the section half-plane at most once within ±½ turn, so any self-contact must appear as
-two meridian points one pitch apart, which the span rule excludes. At the computed minimum pitch the
+**the pitch exceeds the exact meridian span** `max z − min z`. The rule is sufficient for every
+section: `z` increases strictly with `b`, so interior points never exceed the boundary; with `x > 0`
+a screw orbit meets the section half-plane at most once within ±½ turn, so any self-contact must
+appear as two meridian points one pitch apart, which the span rule excludes.
+
+It is also necessary, and therefore exact, for Coil sections. A circle or rectangle centered on the
+helix is symmetric in the binormal, so its highest and lowest crossings come from points `(n, ±b)`
+at the same radius and the binormal segment between them lies in the section. A pitch at or below
+the span therefore places the next turn's lowest point on that segment. A helical Sweep profile
+need not have that symmetry, so for it the rule is conservative: a profile whose meridian image
+nests with its own one-pitch translate (for example a chevron opening along the axis) is rejected
+even when its turns would not touch. At the computed minimum Coil pitch the
 ⌀1.9 mm case touches exactly where the centerline's far self-distance equals the section diameter (the
 tube-thickness criterion), and the tests check this agreement independently for several circular
 sections, plus a real-kernel overlap oracle on both reproductions.
@@ -58,9 +66,12 @@ sections, plus a real-kernel overlap oracle on both reproductions.
   extremes of `z` and of `x` (which must stay positive).
 - The reported minimum pitch is found by bisection and rounded up to 0.001 mm.
 
-The same functions live in the worker protocol and, mirrored, in the domain (which cannot import the
-protocol); tests pin both to identical values. Checks run in the domain and protocol schemas and
-again in the geometry worker, so invalid content fails closed.
+The Coil functions live in the worker protocol and, mirrored, in the domain (which cannot import the
+protocol). A parity test in the document worker, which depends on both, compares their spans and
+minimum pitches over several circular and rectangular sections. The geometry worker reuses the
+protocol's meridian mapping and interval maximizer for helical Sweep profiles instead of a third
+copy. Checks run in the domain and protocol schemas and again in the geometry worker, so invalid
+content fails closed.
 
 ### Geometry
 
