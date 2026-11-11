@@ -6,9 +6,9 @@ This directory accompanies the exact SolveSpace-derived browser runtime under `p
 
 | Artifact | SHA-256 |
 |---|---|
-| Corresponding-source bundle | `297f843724a48893737ae451616c70875ee8ec22c26d6dd91fcaca8b72db144b` |
+| Corresponding-source bundle | `a7064eb4a1e2defff4a2b310d3d727f0ccf42c4a625f51aad638ce05c13a5c65` |
 | ES module | `60c8714fbd5d94a50bdfcde7bd1658cfb2a180ad44be124997905ece7be545c7` |
-| WASM | `c9e3e35084b3812e9eae7bdff8fd3290394918c88ba38504e58a9a9d4a2bd978` |
+| WASM | `4f11c532844b963910bf9bf5aebabe67aed7926d1307195cc2d4fcc9f06dee82` |
 
 Run `bun run solvespace:verify:runtime` to verify that the distributed runtime and corresponding-source bundle still match the reviewed artifacts. Run `bun run solvespace:bundle:compliance` after a reviewed source build to reproduce the bundle. A solver upgrade must replace the runtime and corresponding source together and update all recorded hashes in one change.
 
