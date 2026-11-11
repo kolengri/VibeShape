@@ -534,6 +534,8 @@ function useRevolveFormCopy(mode: RevolveFormMode["kind"]) {
     invalidExpression: t("invalidExpression"),
     invalidDimension: t("invalidDimension"),
     invalidRange: t("invalidRange"),
+    invalidTotal: t("invalidTotal"),
+    missingEnd: t("missingEnd"),
     missingTarget: t("missingTarget"),
     operation: t("operation"),
     operationAdd: t("operationAdd"),
@@ -764,9 +766,16 @@ function RevolveTaskPanel({
   const profileLabel = profileLabels.join(", ")
   const copy = useRevolveFormCopy(mode.kind)
   const task = featureTaskContext(mode, snapshot.revision)
+  const endOptions = useExtrusionBodyOptions(
+    snapshot,
+    report.rebuild,
+    mode.kind === "edit" ? mode.feature.id : undefined,
+    true,
+  )
   return (
     <TaskPanelSurface aria-label={panelT("ariaLabel")}>
       <RevolveForm
+        endOptions={endOptions}
         angleRequest={angleRequest}
         axisLineLabel={axisLineLabel}
         axisSelection={axisSelection}

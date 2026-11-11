@@ -7,7 +7,6 @@ import {
   type FeatureId,
   featureIdSchema,
   featureRecordSchema,
-  multiProfileRevolveFeatureType,
   type revolveFeatureParametersSchema,
   revolveFeatureType,
   revolveFeatureTypeV6,
@@ -17,7 +16,7 @@ import {
   variableIdSchema,
 } from "@vibeshape/domain"
 import { bodyReferenceSchema } from "@vibeshape/domain/body-reference"
-import { revolveFeatureTypeV7 } from "@vibeshape/domain/part-design"
+import { revolveFeatureTypeV8 } from "@vibeshape/domain/part-design"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { vi } from "../../../../../tests/unit/support/bun-test"
@@ -88,6 +87,8 @@ const copy = {
   invalidExpression: "Enter a valid expression.",
   invalidDimension: "Expression must resolve to an angle.",
   invalidRange: "Enter a supported positive angle.",
+  invalidTotal: "The two angles exceed one turn.",
+  missingEnd: "Choose an end body or face.",
   validationSummary: "Fix the highlighted angle.",
   staleRevision: "The document changed.",
   saveFailed: "The revolve could not be created.",
@@ -207,59 +208,65 @@ describe("RevolveForm", () => {
     { multi: false, roles: ["pattern.instance.0", "pattern.instance.1"] },
     { multi: true, roles: ["result"] },
     { multi: true, roles: ["pattern.instance.0", "pattern.instance.1"] },
-  ])("retains legacy scope and schema for multi=$multi with $roles", async ({ multi, roles }) => {
-    const user = userEvent.setup()
-    const profiles = multi ? [profile, secondProfile] : [profile]
-    const parameters = {
-      ...(multi ? { profiles: { schemaVersion: 0, profiles } } : { profile }),
-      axis: { kind: "origin-axis", axis: "y" },
-      angle: createAngleQuantity(180, "deg", "#sweep"),
-      operation: "remove",
-    }
-    const edited = featureRecordSchema.parse({
-      ...existingFeature,
-      type: multi ? revolveFeatureTypeV6.type : revolveFeatureType.type,
-      parameters,
-      dependencies: [targetFeatureId],
-    })
-    const producer = { ...existingFeature, id: targetFeatureId, label: "Target" }
-    const collected = currentBodyOptions([producer, edited], edited, roles)
-    const { onSave, formCopy } = renderForm(
-      undefined,
-      undefined,
-      { kind: "edit", feature: edited, profiles },
-      undefined,
-      collected,
-    )
-    expect(targetBodyInput().value).toBe(targetFeatureId)
-    await user.click(screen.getByRole("button", { name: formCopy.submit }))
-    expect(onSave).toHaveBeenLastCalledWith(
-      4,
-      expect.objectContaining({
-        ...edited,
-        parameters: {
-          ...parameters,
-          angle: expect.objectContaining({
-            value: Math.PI,
-            source: expect.objectContaining({ expression: "#sweep" }),
-          }),
-        },
-      }),
-    )
-    const exact = collected.find((option) => option.body)
-    if (!exact) throw new Error("Expected an explicit body choice.")
-    await user.click(screen.getByRole("combobox", { name: copy.target }))
-    await user.type(screen.getByRole("combobox", { name: "Search options…" }), exact.label)
-    await user.click(screen.getByRole("option", { name: exact.label }))
-    await user.click(screen.getByRole("button", { name: formCopy.submit }))
-    expect(onSave).toHaveBeenLastCalledWith(
-      4,
-      expect.objectContaining({
-        type: revolveFeatureTypeV7.type,
-        parameters: expect.objectContaining({ targetBody: exact.body }),
-      }),
-    )
-  })
+  ])(
+    "keeps a saved legacy schema until an exact body needs v8 (multi=$multi, $roles)",
+    async ({ multi, roles }) => {
+      const user = userEvent.setup()
+      const profiles = multi ? [profile, secondProfile] : [profile]
+      const parameters = {
+        ...(multi ? { profiles: { schemaVersion: 0, profiles } } : { profile }),
+        axis: { kind: "origin-axis", axis: "y" },
+        angle: createAngleQuantity(180, "deg", "#sweep"),
+        operation: "remove",
+      }
+      const edited = featureRecordSchema.parse({
+        ...existingFeature,
+        type: multi ? revolveFeatureTypeV6.type : revolveFeatureType.type,
+        parameters,
+        dependencies: [targetFeatureId],
+      })
+      const producer = { ...existingFeature, id: targetFeatureId, label: "Target" }
+      const collected = currentBodyOptions([producer, edited], edited, roles)
+      const { onSave, formCopy } = renderForm(
+        undefined,
+        undefined,
+        { kind: "edit", feature: edited, profiles },
+        undefined,
+        collected,
+      )
+      expect(targetBodyInput().value).toBe(targetFeatureId)
+      await user.click(screen.getByRole("button", { name: formCopy.submit }))
+      expect(onSave).toHaveBeenLastCalledWith(
+        4,
+        expect.objectContaining({
+          ...edited,
+          parameters: {
+            ...parameters,
+            angle: expect.objectContaining({
+              value: Math.PI,
+              source: expect.objectContaining({ expression: "#sweep" }),
+            }),
+          },
+        }),
+      )
+      const exact = collected.find((option) => option.body)
+      if (!exact) throw new Error("Expected an explicit body choice.")
+      await user.click(screen.getByRole("combobox", { name: copy.target }))
+      await user.type(screen.getByRole("combobox", { name: "Search options…" }), exact.label)
+      await user.click(screen.getByRole("option", { name: exact.label }))
+      await user.click(screen.getByRole("button", { name: formCopy.submit }))
+      // A whole-result choice stays representable by the saved schema; a named output needs v8.
+      expect(onSave).toHaveBeenLastCalledWith(
+        4,
+        roles.includes("result")
+          ? expect.objectContaining({ type: edited.type, dependencies: [targetFeatureId] })
+          : expect.objectContaining({
+              type: revolveFeatureTypeV8.type,
+              parameters: expect.objectContaining({ targetBody: exact.body }),
+            }),
+      )
+    },
+  )
   it("synchronizes graphical angle into the exact angle field and preview", async () => {
     const onPreviewChange = vi.fn()
     renderForm(undefined, undefined, undefined, onPreviewChange, [], undefined, {
@@ -442,7 +449,7 @@ describe("RevolveForm", () => {
     expect(onSave).toHaveBeenCalledWith(
       4,
       expect.objectContaining({
-        type: multiProfileRevolveFeatureType.type,
+        type: revolveFeatureTypeV8.type,
         parameters: expect.objectContaining({
           operation: "new",
           profiles: expect.objectContaining({ profiles: [profile, secondProfile] }),
@@ -474,9 +481,10 @@ describe("RevolveForm", () => {
       expect(onSave).toHaveBeenCalledWith(
         4,
         expect.objectContaining({
-          type: revolveFeatureTypeV6.type,
+          type: revolveFeatureTypeV8.type,
           parameters: expect.objectContaining({
             operation,
+            targetBody: { schemaVersion: 0, featureId: targetFeatureId, outputRole: "result" },
             profiles: expect.objectContaining({ profiles: [profile, secondProfile] }),
           }),
           dependencies: [targetFeatureId],
@@ -554,7 +562,7 @@ describe("RevolveForm", () => {
 })
 
 it.each(["add", "remove", "intersect"] as const)(
-  "saves %s Revolve v7 with a selected exact body role",
+  "saves %s Revolve v8 with a selected exact body role",
   async (operation) => {
     const user = userEvent.setup()
     const body = bodyReferenceSchema.parse({
@@ -570,15 +578,218 @@ it.each(["add", "remove", "intersect"] as const)(
     expect(onSave).toHaveBeenCalledWith(
       4,
       expect.objectContaining({
-        type: revolveFeatureTypeV7.type,
+        type: revolveFeatureTypeV8.type,
         dependencies: [targetFeatureId],
         parameters: expect.objectContaining({ operation, targetBody: body }),
       }),
     )
     await waitFor(() =>
       expect(onPreviewChange).toHaveBeenCalledWith(
-        expect.objectContaining({ type: revolveFeatureTypeV7.type }),
+        expect.objectContaining({ type: revolveFeatureTypeV8.type }),
       ),
     )
   },
 )
+
+describe("RevolveForm v8 extents and endpoints", () => {
+  const endFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3704")
+  const endHash = "e".repeat(64)
+  const endFace = {
+    schemaVersion: 1 as const,
+    featureId: endFeatureId,
+    outputRole: "result",
+    kind: "face" as const,
+    signature: {
+      ...supportReference.signature,
+      centroid: [0, 2.5, -5.5] as [number, number, number],
+    },
+  }
+  const endOptions = [
+    {
+      id: endFeatureId,
+      label: "Wall · result",
+      outputRole: "result",
+      contentHash: endHash,
+      faces: [{ label: "Wall face", reference: endFace }],
+    },
+  ]
+
+  function renderExtentForm(
+    mode: RevolveFormMode = {
+      kind: "create",
+      createFeatureId: () => featureId,
+      featureLabel: "Revolve 1",
+      profiles: [profile],
+    },
+  ) {
+    const onSave = vi.fn(async () => ({ ok: true as const }))
+    const onPreviewChange = vi.fn()
+    render(
+      <I18nProvider i18n={i18n} initialLocale="en">
+        <TooltipProvider>
+          <RevolveForm
+            baseRevision={4}
+            copy={mode.kind === "edit" ? { ...copy, submit: "Update revolve" } : copy}
+            endOptions={endOptions}
+            mode={mode}
+            profileLabel="Sketch 1"
+            variables={variables}
+            onCancel={vi.fn()}
+            onPreviewChange={onPreviewChange}
+            onSave={onSave}
+            onSaved={vi.fn()}
+          />
+        </TooltipProvider>
+      </I18nProvider>,
+    )
+    return { onSave, onPreviewChange }
+  }
+  const submit = (name = copy.submit) => screen.getByRole("button", { name })
+
+  it("splits a symmetric total angle and disables the direction", async () => {
+    const user = userEvent.setup()
+    const { onSave } = renderExtentForm()
+    await user.selectOptions(screen.getByLabelText("Extent"), "symmetric")
+    expect(screen.getByRole("combobox", { name: "Total angle" })).toBeTruthy()
+    expect(
+      (screen.getByRole("checkbox", { name: "Reverse direction" }) as HTMLInputElement).disabled,
+    ).toBe(true)
+    await user.click(submit())
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        type: revolveFeatureTypeV8.type,
+        parameters: expect.objectContaining({
+          symmetric: true,
+          reversed: false,
+          secondAngle: null,
+          angle: expect.objectContaining({ value: Math.PI * 2 }),
+        }),
+      }),
+    )
+  })
+
+  it("authors independent reversed two-sided angles and rejects more than one turn", async () => {
+    const user = userEvent.setup()
+    const { onSave } = renderExtentForm()
+    await user.selectOptions(screen.getByLabelText("Extent"), "two-sided")
+    const first = screen.getByRole("combobox", { name: "First angle" })
+    await user.clear(first)
+    await user.type(first, "300 deg")
+    const second = screen.getByRole("combobox", { name: "Second angle" })
+    await user.clear(second)
+    await user.type(second, "61 deg")
+    await user.click(submit())
+    expect(await screen.findByText(copy.invalidTotal)).toBeTruthy()
+    expect(onSave).not.toHaveBeenCalled()
+    await user.clear(second)
+    await user.type(second, "#sweep / 3")
+    await user.click(screen.getByRole("checkbox", { name: "Reverse direction" }))
+    await user.click(submit())
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        parameters: expect.objectContaining({
+          reversed: true,
+          symmetric: false,
+          angle: expect.objectContaining({ value: (300 * Math.PI) / 180 }),
+          secondAngle: expect.objectContaining({
+            value: Math.PI / 3,
+            source: expect.objectContaining({ expression: "#sweep / 3" }),
+          }),
+        }),
+      }),
+    )
+  })
+
+  it("binds an up-to-face endpoint to its exact body revision and orders its dependency", async () => {
+    const user = userEvent.setup()
+    const { onSave } = renderExtentForm()
+    await user.selectOptions(screen.getByLabelText("Extent"), "two-sided")
+    await user.selectOptions(screen.getByLabelText("End condition"), "up-to-face")
+    expect(screen.queryByLabelText("Extent")).toBeNull()
+    expect(screen.queryByRole("combobox", { name: "Second angle" })).toBeNull()
+    await user.click(submit())
+    expect(onSave).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("combobox", { name: "End body" }))
+    await user.type(screen.getByRole("combobox", { name: "Search options…" }), "Wall")
+    await user.click(screen.getByRole("option", { name: "Wall · result" }))
+    await user.click(screen.getByRole("combobox", { name: "End face" }))
+    await user.type(screen.getByRole("combobox", { name: "Search options…" }), "Wall face")
+    await user.click(screen.getByRole("option", { name: "Wall face" }))
+    await user.click(submit())
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        type: revolveFeatureTypeV8.type,
+        dependencies: [endFeatureId],
+        parameters: expect.objectContaining({
+          secondAngle: null,
+          endCondition: {
+            kind: "up-to-face",
+            targetBody: { schemaVersion: 0, featureId: endFeatureId, outputRole: "result" },
+            sourceContentHash: endHash,
+            face: endFace,
+          },
+        }),
+      }),
+    )
+  })
+
+  it("restores saved v8 extents and endpoints while editing", async () => {
+    const user = userEvent.setup()
+    const saved = featureRecordSchema.parse({
+      ...existingFeature,
+      type: revolveFeatureTypeV8.type,
+      parameters: {
+        profiles: { schemaVersion: 0, profiles: [profile] },
+        axis: { kind: "origin-axis", axis: "y" },
+        angle: createAngleQuantity(90, "deg"),
+        symmetric: false,
+        reversed: true,
+        secondAngle: null,
+        operation: "new",
+        targetBody: null,
+        endCondition: {
+          kind: "up-to-body",
+          targetBody: { schemaVersion: 0, featureId: endFeatureId, outputRole: "result" },
+          sourceContentHash: endHash,
+        },
+      },
+      dependencies: [endFeatureId],
+    })
+    const { onSave } = renderExtentForm({ kind: "edit", feature: saved, profiles: [profile] })
+    expect((screen.getByLabelText("End condition") as HTMLSelectElement).value).toBe("up-to-body")
+    expect(
+      (screen.getByRole("checkbox", { name: "Reverse direction" }) as HTMLInputElement).checked,
+    ).toBe(true)
+    await user.click(submit("Update revolve"))
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        type: revolveFeatureTypeV8.type,
+        dependencies: [endFeatureId],
+        parameters: expect.objectContaining({
+          reversed: true,
+          endCondition: saved.parameters.endCondition,
+        }),
+      }),
+    )
+  })
+
+  it("keeps a legacy edit on its schema after a v8 option is chosen and restored", async () => {
+    const user = userEvent.setup()
+    const { onSave } = renderExtentForm({
+      kind: "edit",
+      feature: existingFeature,
+      profiles: [profile],
+    })
+    await user.selectOptions(screen.getByLabelText("Extent"), "symmetric")
+    await user.selectOptions(screen.getByLabelText("Extent"), "one-sided")
+    await user.click(submit("Update revolve"))
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({ type: revolveFeatureType.type }),
+    )
+  })
+})
