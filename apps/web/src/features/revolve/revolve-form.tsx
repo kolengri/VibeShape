@@ -9,22 +9,21 @@ import {
   type FeatureRecord,
   featureIdSchema,
   featureRecordSchema,
-  multiProfileRevolveFeatureParametersSchema,
-  multiProfileRevolveFeatureType,
+  type RevolveAuthoringIntent,
+  type RevolveAuthoringRoute,
+  type RevolveEndCondition,
   readRevolveFeatureParameters,
   readRevolveProfileSet,
-  revolveFeatureParametersSchema,
-  revolveFeatureParametersV6Schema,
-  revolveFeatureParametersV7Schema,
-  revolveFeatureType,
-  revolveFeatureTypeV6,
-  revolveFeatureTypeV7,
+  revolveAngleSchema,
+  type revolveFeatureParametersSchema,
+  routeRevolveAuthoring,
   type SketchProfileSelector,
   type SketchProfileSet,
   type TopoRef,
   type VariableDefinition,
 } from "@vibeshape/domain"
 import type { BodyReference } from "@vibeshape/domain/body-reference"
+import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { fieldVariants } from "@vibeshape/ui/components/field"
 import { Scan } from "@vibeshape/ui/components/icons"
@@ -38,6 +37,7 @@ import {
   normalizeExpressionWithDisplayUnit,
   positiveDirectManipulationAngleExpression,
 } from "../../document/document-display-units"
+import type { ExtrusionTargetOption } from "../extrusion/extrusion-body-options"
 import { exactBodyPickCandidates } from "../part-design/body-reference-picking"
 import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
 import { exactBodyOptionId } from "../part-design/exact-body-options"
@@ -54,22 +54,32 @@ import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import type { FeaturePreviewState } from "../preview/use-feature-preview"
 import type { RevolveAngleRequest } from "./revolve-angle-manipulator"
+import { RevolveEndFields, RevolveExtentFields } from "./revolve-extent-fields"
+import {
+  defaultRevolveExtentValues,
+  parseRevolveEnd,
+  type RevolveExtentValues,
+  revolveExtentValuesFromParameters,
+} from "./revolve-extent-model"
 import { RevolveParameterPanel, type RevolveParameterPanelCopy } from "./revolve-parameter-panel"
 
 export type RevolveTargetOption = Readonly<{ id: string; label: string; body?: BodyReference }>
 
 const EMPTY_TARGET_OPTIONS = [] as const
+const EMPTY_END_OPTIONS: readonly ExtrusionTargetOption[] = []
 const IGNORE_PREVIEW = () => undefined
 
 type RevolveAxis = ReturnType<typeof revolveFeatureParametersSchema.parse>["axis"]
-type Values = Readonly<{
-  axis: RevolveAxis
-  angle: string
-  operation: string
-  profiles: SketchProfileSet
-  supportReference: TopoRef | null
-  targetFeatureId: string
-}>
+export type RevolveFormValues = RevolveExtentValues &
+  Readonly<{
+    axis: RevolveAxis
+    angle: string
+    operation: string
+    profiles: SketchProfileSet
+    supportReference: TopoRef | null
+    targetFeatureId: string
+  }>
+type Values = RevolveFormValues
 export type RevolveFormCopy = RevolveParameterPanelCopy &
   Readonly<{
     axis: string
@@ -81,6 +91,8 @@ export type RevolveFormCopy = RevolveParameterPanelCopy &
     invalidExpression: string
     invalidDimension: string
     invalidRange: string
+    invalidTotal: string
+    missingEnd: string
     missingTarget: string
     operation: string
     operationAdd: string
@@ -113,10 +125,12 @@ function valuesFromFeature(
   feature: FeatureRecord,
   profiles: readonly SketchProfileSelector[],
   supportReference: TopoRef | undefined,
+  angleUnit: "rad" | "deg",
 ): Values {
   const p = readRevolveFeatureParameters(feature)
   if (!p) throw new Error("Revolve parameters are unavailable.")
   return {
+    ...revolveExtentValuesFromParameters(p, defaultAngleExpression(Math.PI / 2, angleUnit)),
     axis: p.axis,
     angle: p.angle.source.expression ?? `${p.angle.source.value} ${p.angle.source.unit}`,
     operation: p.operation,
@@ -137,8 +151,9 @@ function defaultValuesForMode(
   targetOptions: readonly RevolveTargetOption[],
 ): Values {
   if (mode.kind === "edit")
-    return valuesFromFeature(mode.feature, mode.profiles, mode.supportReference)
+    return valuesFromFeature(mode.feature, mode.profiles, mode.supportReference, angleUnit)
   return {
+    ...defaultRevolveExtentValues(defaultAngleExpression(Math.PI / 2, angleUnit)),
     axis: { kind: "origin-axis", axis: "x" },
     angle: defaultAngleExpression(Math.PI * 2, angleUnit),
     operation: "new",
@@ -163,6 +178,7 @@ type RevolveSubmitHandlerInput = Readonly<{
   onSave: (baseRevision: number, feature: FeatureRecord) => Promise<FeatureMutationResult>
   onSaved: () => void
   options: readonly RevolveTargetOption[]
+  endOptions: readonly ExtrusionTargetOption[]
   setMessage: (message: string | null) => void
   variables: readonly VariableDefinition[]
 }>
@@ -170,19 +186,20 @@ type RevolveSubmitHandlerInput = Readonly<{
 function revolveSubmitHandler(input: RevolveSubmitHandlerInput) {
   return async ({ value }: { value: Values }) => {
     if (input.disabled || !isFeaturePreviewReady(input.previewStatus)) return
-    const parsed = parseValues(value, input.variables, input.displayUnit, input.copy, input.options)
+    const parsed = parseValues(value, {
+      variables: input.variables,
+      unit: input.displayUnit,
+      copy: input.copy,
+      options: input.options,
+      endOptions: input.endOptions,
+      mode: input.mode,
+    })
     if (!parsed.ok) return
     input.setMessage(null)
     await submitFeatureMutation({
       baseRevision: input.baseRevision,
       copy: input.copy,
-      feature: record(
-        input.mode,
-        input.featureId,
-        parsed.parameters,
-        parsed.targetFeatureId,
-        parsed.supportReference,
-      ),
+      feature: record(input.mode, input.featureId, parsed),
       onSave: input.onSave,
       onSaved: input.onSaved,
       setMessage: input.setMessage,
@@ -190,41 +207,30 @@ function revolveSubmitHandler(input: RevolveSubmitHandlerInput) {
   }
 }
 
-function record(
-  mode: RevolveFormMode,
-  id: FeatureId,
-  parameters:
-    | ReturnType<typeof revolveFeatureParametersSchema.parse>
-    | ReturnType<typeof multiProfileRevolveFeatureParametersSchema.parse>
-    | ReturnType<typeof revolveFeatureParametersV6Schema.parse>
-    | ReturnType<typeof revolveFeatureParametersV7Schema.parse>,
-  targetFeatureId: FeatureId | null,
-  supportReference: TopoRef | null,
-) {
-  const references = supportReference ? [supportReference] : []
-  const dependencyParameters =
-    "profile" in parameters
-      ? parameters
-      : { ...parameters, profile: parameters.profiles.profiles[0] as SketchProfileSelector }
+type ParsedRevolve = Readonly<{
+  route: RevolveAuthoringRoute
+  endCondition: RevolveEndCondition
+  axis: RevolveAxis
+  operation: ReturnType<typeof extrusionOperationSchema.parse>
+  supportReference: TopoRef | null
+  targetFeatureId: FeatureId | null
+}>
+
+function record(mode: RevolveFormMode, id: FeatureId, parsed: ParsedRevolve) {
+  const references = parsed.supportReference ? [parsed.supportReference] : []
   const dependencies = expectedRevolveDependencyIds(
-    dependencyParameters,
-    targetFeatureId,
+    parsed,
+    parsed.targetFeatureId,
     references.map(({ featureId }) => featureId),
   )
+  const authored = { type: parsed.route.type, parameters: parsed.route.parameters }
   return featureRecordSchema.parse(
     mode.kind === "edit"
-      ? {
-          ...mode.feature,
-          type: revolveType(parameters),
-          parameters,
-          references,
-          dependencies,
-        }
+      ? { ...mode.feature, ...authored, references, dependencies }
       : {
           schemaVersion: 0,
           id,
-          type: revolveType(parameters),
-          parameters,
+          ...authored,
           references,
           dependencies,
           suppressed: false,
@@ -233,83 +239,116 @@ function record(
   )
 }
 
-function revolveType(
-  parameters:
-    | ReturnType<typeof revolveFeatureParametersSchema.parse>
-    | ReturnType<typeof multiProfileRevolveFeatureParametersSchema.parse>
-    | ReturnType<typeof revolveFeatureParametersV6Schema.parse>
-    | ReturnType<typeof revolveFeatureParametersV7Schema.parse>,
-) {
-  if ("targetBody" in parameters) return revolveFeatureTypeV7.type
-  if (!("profiles" in parameters)) return revolveFeatureType.type
-  return parameters.operation === "new"
-    ? multiProfileRevolveFeatureType.type
-    : revolveFeatureTypeV6.type
+type ParseContext = Readonly<{
+  variables: readonly VariableDefinition[]
+  unit: "rad" | "deg"
+  copy: RevolveFormCopy
+  options: readonly RevolveTargetOption[]
+  endOptions: readonly ExtrusionTargetOption[]
+  mode: RevolveFormMode
+}>
+
+/**
+ * An endpoint hides the angle field; its retained value is the parsed field when it is a supported
+ * Revolve angle, else the saved angle of an edited revolve, else a full turn, so hidden raw or
+ * out-of-range input never blocks Apply.
+ */
+function retainedEndpointAngle(values: Values, context: ParseContext) {
+  const angle = parseAngle(values.angle, "angle", context)
+  if (angle.ok && revolveAngleSchema.safeParse(angle.quantity).success) return angle.quantity
+  const saved =
+    context.mode.kind === "edit" ? readRevolveFeatureParameters(context.mode.feature)?.angle : null
+  return saved ?? createAngleQuantity(Math.PI * 2, "rad")
 }
 
-function parseValues(
-  values: Values,
-  variables: readonly VariableDefinition[],
-  unit: "rad" | "deg",
-  copy: RevolveFormCopy,
-  options: readonly RevolveTargetOption[],
-) {
-  const angle = parseAngle(values.angle, variables, unit, copy)
+function parseAngles(values: Values, context: ParseContext) {
+  if (values.endKind !== "angle")
+    return {
+      ok: true as const,
+      angle: retainedEndpointAngle(values, context),
+      secondAngle: null,
+    }
+  const angle = parseAngle(values.angle, "angle", context)
   if (!angle.ok) return angle
+  if (values.extent !== "two-sided")
+    return { ok: true as const, angle: angle.quantity, secondAngle: null }
+  const second = parseAngle(values.secondAngle, "secondAngle", context)
+  return second.ok
+    ? { ok: true as const, angle: angle.quantity, secondAngle: second.quantity }
+    : second
+}
+
+/** Exact body choices name their role; a legacy producer choice means its whole result. */
+function targetBody(target: Extract<ReturnType<typeof parseTarget>, { ok: true }>) {
+  if (target.body) return target.body
+  return target.featureId
+    ? { schemaVersion: 0 as const, featureId: target.featureId, outputRole: "result" }
+    : null
+}
+
+type ParsedAngles = Extract<ReturnType<typeof parseAngles>, { ok: true }>
+
+/** Symmetric intent only applies to an angular end; it never carries a reversed direction. */
+function authoringIntent(
+  values: Values,
+  angles: ParsedAngles,
+  operation: ParsedRevolve["operation"],
+  target: Extract<ReturnType<typeof parseTarget>, { ok: true }>,
+  endCondition: RevolveEndCondition,
+): RevolveAuthoringIntent {
+  const symmetric = endCondition.kind === "angle" && values.extent === "symmetric"
+  return {
+    profiles: values.profiles,
+    axis: values.axis,
+    angle: angles.angle,
+    symmetric,
+    reversed: !symmetric && values.reversed,
+    secondAngle: angles.secondAngle,
+    operation,
+    targetBody: operation === "new" ? null : targetBody(target),
+    endCondition,
+  }
+}
+
+function parseValues(values: Values, context: ParseContext) {
+  const { copy } = context
+  const angles = parseAngles(values, context)
+  if (!angles.ok) return angles
   const operation = extrusionOperationSchema.parse(values.operation)
-  const target = parseTarget(values.targetFeatureId, operation, options, copy)
+  const target = parseTarget(values.targetFeatureId, operation, context.options, copy)
   if (!target.ok) return target
-  const parsed =
-    operation !== "new" && target.body
-      ? revolveFeatureParametersV7Schema.safeParse({
-          profiles: values.profiles,
-          axis: values.axis,
-          angle: angle.quantity,
-          operation,
-          targetBody: target.body,
-        })
-      : values.profiles.profiles.length > 1
-        ? operation === "new"
-          ? multiProfileRevolveFeatureParametersSchema.safeParse({
-              profiles: values.profiles,
-              axis: values.axis,
-              angle: angle.quantity,
-              operation,
-            })
-          : revolveFeatureParametersV6Schema.safeParse({
-              profiles: values.profiles,
-              axis: values.axis,
-              angle: angle.quantity,
-              operation,
-            })
-        : revolveFeatureParametersSchema.safeParse({
-            profile: values.profiles.profiles[0],
-            axis: values.axis,
-            angle: angle.quantity,
-            operation,
-          })
-  if (!parsed.success) return { ok: false as const, issues: { angle: copy.invalidRange } }
+  const end = parseRevolveEnd(values, context.endOptions)
+  if (!end.ok) return { ok: false as const, issues: { [end.field]: copy.missingEnd } }
+  const route = routeRevolveAuthoring(
+    authoringIntent(values, angles, operation, target, end.value),
+    context.mode.kind === "edit" ? context.mode.feature.type : null,
+  )
+  if (!route) {
+    const issues = angles.secondAngle
+      ? { secondAngle: copy.invalidTotal }
+      : { angle: copy.invalidRange }
+    return { ok: false as const, issues }
+  }
   return {
     ok: true as const,
-    parameters: parsed.data,
+    route,
+    endCondition: end.value,
+    axis: values.axis,
+    operation,
     supportReference: values.supportReference,
     targetFeatureId: target.featureId,
   }
 }
 
-function parseAngle(
-  rawExpression: string,
-  variables: readonly VariableDefinition[],
-  unit: "rad" | "deg",
-  copy: RevolveFormCopy,
-) {
-  const evaluated = evaluateVariableDefinitions(variables)
-  if (!evaluated.ok) return { ok: false as const, issues: { angle: copy.invalidExpression } }
-  const expression = normalizeExpressionWithDisplayUnit(rawExpression, unit)
+function parseAngle(rawExpression: string, field: "angle" | "secondAngle", context: ParseContext) {
+  const { copy } = context
+  const evaluated = evaluateVariableDefinitions(context.variables)
+  if (!evaluated.ok) return { ok: false as const, issues: { [field]: copy.invalidExpression } }
+  const expression = normalizeExpressionWithDisplayUnit(rawExpression, context.unit)
   const result = evaluateExpression(expression, evaluated.valuesByName)
-  if (!result.ok) return { ok: false as const, issues: { angle: copy.invalidExpression } }
+  if (!result.ok) return { ok: false as const, issues: { [field]: copy.invalidExpression } }
   if (result.value.dimension !== "angle")
-    return { ok: false as const, issues: { angle: copy.invalidDimension } }
+    return { ok: false as const, issues: { [field]: copy.invalidDimension } }
   return { ok: true as const, quantity: createAngleQuantity(result.value.value, "rad", expression) }
 }
 
@@ -328,25 +367,18 @@ function parseTarget(
 }
 
 function RevolvePreviewSync({
-  copy,
-  displayUnit,
+  context,
   featureId,
-  mode,
   onPreviewChange,
-  options,
   values,
-  variables,
 }: {
-  copy: RevolveFormCopy
-  displayUnit: "rad" | "deg"
+  context: ParseContext
   featureId: FeatureId
-  mode: RevolveFormMode
   onPreviewChange: (feature: FeatureRecord | null) => void
-  options: readonly RevolveTargetOption[]
   values: Values
-  variables: readonly VariableDefinition[]
 }) {
-  const parsed = parseValues(values, variables, displayUnit, copy, options)
+  const { mode } = context
+  const parsed = parseValues(values, context)
   useDebouncedFeaturePreview({
     onPreviewChange,
     preview: featureEditPreview(
@@ -357,17 +389,10 @@ function RevolvePreviewSync({
             mode.feature,
             readRevolveProfileSet(mode.feature)?.profiles ?? [],
             mode.supportReference,
+            context.unit,
           )
         : null,
-      parsed.ok
-        ? record(
-            mode,
-            featureId,
-            parsed.parameters,
-            parsed.targetFeatureId,
-            parsed.supportReference,
-          )
-        : null,
+      parsed.ok ? record(mode, featureId, parsed) : null,
     ),
   })
   return null
@@ -486,6 +511,8 @@ export type RevolveFormProps = Readonly<{
   onAxisSelectionRequest?: (() => void) | undefined
   onProfileSelectionRequest?: (() => void) | undefined
   options?: readonly RevolveTargetOption[]
+  /** Exact rebuilt bodies and faces available as dynamic endpoints. */
+  endOptions?: readonly ExtrusionTargetOption[]
   profileLabel: string
   profileLabels?: readonly string[]
   onProfileRemove?: ((index: number) => void) | undefined
@@ -497,22 +524,25 @@ export type RevolveFormProps = Readonly<{
 
 function useRevolveFormController(props: RevolveFormProps) {
   const targetOptions = props.options ?? EMPTY_TARGET_OPTIONS
+  const endOptions = props.endOptions ?? EMPTY_END_OPTIONS
   const updatePreview = previewHandler(props.onPreviewChange)
   const { clearSubmissionErrors, displayUnits, message, setMessage, suggestions } =
     useParameterFormState(props.variables)
   const [featureId] = useState(() => featureIdForMode(props.mode))
+  const parseContext: ParseContext = {
+    variables: props.variables,
+    unit: displayUnits.angle,
+    copy: props.copy,
+    options: targetOptions,
+    endOptions,
+    mode: props.mode,
+  }
   const form = useCadForm({
     validationLogic: cadFormValidationLogic,
     defaultValues: defaultValuesForMode(props.mode, displayUnits.angle, targetOptions),
     validators: {
       onDynamic: ({ value }) => {
-        const parsed = parseValues(
-          value,
-          props.variables,
-          displayUnits.angle,
-          props.copy,
-          targetOptions,
-        )
+        const parsed = parseValues(value, parseContext)
         return parsed.ok ? undefined : { form: props.copy.validationSummary, fields: parsed.issues }
       },
     },
@@ -527,6 +557,7 @@ function useRevolveFormController(props: RevolveFormProps) {
       onSave: props.onSave,
       onSaved: props.onSaved,
       options: targetOptions,
+      endOptions,
       setMessage,
       variables: props.variables,
     }),
@@ -584,8 +615,10 @@ function useRevolveFormController(props: RevolveFormProps) {
     clearSubmissionErrors,
     disabled: props.disabled ?? false,
     displayUnits,
+    endOptions,
     featureId,
     form,
+    parseContext,
     message,
     profileSelectionActive: props.profileSelectionActive ?? false,
     suggestions,
@@ -594,7 +627,7 @@ function useRevolveFormController(props: RevolveFormProps) {
   } as const
 }
 
-type RevolveFormController = ReturnType<typeof useRevolveFormController>
+export type RevolveFormController = ReturnType<typeof useRevolveFormController>
 
 function RevolvePreviewField({ controller }: { controller: RevolveFormController }) {
   const { form } = controller
@@ -602,14 +635,10 @@ function RevolvePreviewField({ controller }: { controller: RevolveFormController
     <form.Subscribe selector={(state) => state.values}>
       {(values) => (
         <RevolvePreviewSync
-          copy={controller.copy}
-          displayUnit={controller.displayUnits.angle}
+          context={controller.parseContext}
           featureId={controller.featureId}
-          mode={controller.mode}
           onPreviewChange={controller.updatePreview}
-          options={controller.targetOptions}
           values={values}
-          variables={controller.variables}
         />
       )}
     </form.Subscribe>
@@ -696,12 +725,43 @@ function RevolveAxisFormField({ controller }: { controller: RevolveFormControlle
 
 function RevolveAngleField({ controller }: { controller: RevolveFormController }) {
   const { form } = controller
+  const t = useTranslations("app.shell.taskPanel.revolve")
+  return (
+    <form.Subscribe
+      selector={(state) => ({ extent: state.values.extent, endKind: state.values.endKind })}
+    >
+      {({ extent, endKind }) =>
+        endKind === "angle" ? (
+          <RevolveAngleInput
+            controller={controller}
+            label={
+              extent === "symmetric"
+                ? t("totalAngle")
+                : extent === "two-sided"
+                  ? t("firstAngle")
+                  : controller.copy.angle
+            }
+          />
+        ) : null
+      }
+    </form.Subscribe>
+  )
+}
+
+function RevolveAngleInput({
+  controller,
+  label,
+}: {
+  controller: RevolveFormController
+  label: string
+}) {
+  const { form } = controller
   return (
     <form.AppField name="angle">
       {(field) => (
         <field.VariableExpressionField
           id="revolve-angle"
-          label={controller.copy.angle}
+          label={label}
           description={controller.copy.expressionDescription}
           disabled={controller.disabled}
           suggestions={controller.suggestions}
@@ -757,6 +817,12 @@ function RevolveFormView({ controller }: { controller: RevolveFormController }) 
           targetField={<RevolveTargetField controller={controller} />}
           axisField={<RevolveAxisFormField controller={controller} />}
           angleField={<RevolveAngleField controller={controller} />}
+          extentField={
+            <>
+              <RevolveEndFields controller={controller} />
+              <RevolveExtentFields controller={controller} />
+            </>
+          }
         />
       </TaskPanelContentProvider>
     </Form>

@@ -77,6 +77,7 @@
     "./part-design-loft-v3": "./src/part-design-loft-v3.ts",
     "./part-design-sweep": "./src/part-design-sweep.ts",
     "./part-design-pattern": "./src/part-design-pattern.ts",
+    "./part-design-revolve-route": "./src/part-design-revolve-route.ts",
     "./sketch-path-selector": "./src/sketch-path-selector.ts",
     "./source-assets": "./src/source-assets.ts",
     "./document-v3-command-schemas": "./src/document-v3-command-schemas.ts",

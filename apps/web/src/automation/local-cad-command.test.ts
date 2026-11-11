@@ -146,6 +146,86 @@ describe("local CAD commands", () => {
     expect(parsed.command.payload.feature.parameters).toEqual<unknown>(parameters)
   })
 
+  describe("Revolve v8 through create_revolve and update_revolve", () => {
+    const actor = commandActorSchema.parse({
+      type: "mcp",
+      clientId: "org.example.client",
+      sessionId: id(3),
+    })
+    const endBody = { schemaVersion: 0, featureId: id(9), outputRole: "result" }
+    const parameters = {
+      profiles: { schemaVersion: 0, profiles: [profile] },
+      axis: { kind: "origin-axis", axis: "y" },
+      angle: createAngleQuantity(90, "deg"),
+      symmetric: false,
+      reversed: true,
+      secondAngle: null,
+      operation: "remove",
+      targetBody: { schemaVersion: 0, featureId: id(8), outputRole: "pattern.instance.1" },
+      endCondition: { kind: "up-to-body", targetBody: endBody, sourceContentHash: "a".repeat(64) },
+    }
+    const operation = (tool: "create_revolve" | "update_revolve", value: object, deps: string[]) =>
+      localOperationSchema.safeParse({
+        tool,
+        arguments: {
+          draftId: id(5),
+          baseRevision: 7,
+          commandId: id(6),
+          featureId: id(7),
+          dependencies: deps,
+          references: [],
+          suppressed: false,
+          parameters: value,
+        },
+      })
+
+    it.each(["create_revolve", "update_revolve"] as const)(
+      "%s registers v8 with its exact target and endpoint owners",
+      (tool) => {
+        const parsed = operation(tool, parameters, [id(8), id(9)])
+        if (!parsed.success || parsed.data.tool !== tool) throw new Error("Expected v8 input.")
+        const request = createLocalCadCommand(parsed.data as never, actor, id(4))
+        const command = parseDocumentCommand(request.command)
+        if (!command.ok || !("feature" in command.command.payload))
+          throw new Error("Expected a feature command.")
+        expect(command.command.payload.feature.type.schemaVersion).toBe(8)
+        expect(command.command.payload.feature.parameters).toEqual<unknown>(parameters)
+      },
+    )
+
+    it("rejects misordered owners, over-turn angles, and unknown keys", () => {
+      expect(operation("create_revolve", parameters, [id(9), id(8)]).success).toBe(false)
+      expect(operation("create_revolve", parameters, [id(8)]).success).toBe(false)
+      const twoSided = {
+        ...parameters,
+        operation: "new",
+        targetBody: null,
+        endCondition: { kind: "angle" },
+        angle: createAngleQuantity(300, "deg"),
+      }
+      expect(
+        operation(
+          "create_revolve",
+          { ...twoSided, secondAngle: createAngleQuantity(60, "deg") },
+          [],
+        ).success,
+      ).toBe(true)
+      expect(
+        operation(
+          "create_revolve",
+          { ...twoSided, secondAngle: createAngleQuantity(61, "deg") },
+          [],
+        ).success,
+      ).toBe(false)
+      expect(
+        operation("create_revolve", { ...twoSided, symmetric: true, reversed: true }, []).success,
+      ).toBe(false)
+      expect(operation("create_revolve", { ...twoSided, extent: "symmetric" }, []).success).toBe(
+        false,
+      )
+    })
+  })
+
   it("rejects malformed sketch references and invalid solid parameters at the tool boundary", () => {
     expect(
       localOperationSchema.safeParse({
