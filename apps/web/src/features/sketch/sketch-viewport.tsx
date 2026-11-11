@@ -220,6 +220,7 @@ import {
 } from "./sketch-constraint-tools"
 import {
   type CoordinateAnnotationPlacement,
+  type CoordinateAnnotationRegion,
   layoutSketchCoordinateAnnotations,
   sketchCoordinateDimensionPoint,
 } from "./sketch-coordinate-annotations"
@@ -4406,6 +4407,45 @@ function ConstraintAnnotation({
   )
 }
 
+function sameAnnotationRegion(
+  first: CoordinateAnnotationRegion | undefined,
+  second: CoordinateAnnotationRegion,
+) {
+  return (
+    first?.left === second.left &&
+    first.top === second.top &&
+    first.right === second.right &&
+    first.bottom === second.bottom
+  )
+}
+
+/**
+ * Measures the canvas region the floating workspace panels leave free, from the same
+ * `--workspace-chrome-*` insets that keep view controls and other overlays out from under them.
+ */
+function useWorkspaceFreeRegion() {
+  const [region, setRegion] = useState<CoordinateAnnotationRegion>()
+  const probe = useCallback((element: HTMLDivElement | null) => {
+    if (!element) return
+    const measure = () => {
+      const next = {
+        left: element.offsetLeft,
+        top: element.offsetTop,
+        right: element.offsetLeft + element.offsetWidth,
+        bottom: element.offsetTop + element.offsetHeight,
+      }
+      setRegion((previous) => (sameAnnotationRegion(previous, next) ? previous : next))
+    }
+    measure()
+    if (typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    if (element.parentElement) observer.observe(element.parentElement)
+    return () => observer.disconnect()
+  }, [])
+  return [region, probe] as const
+}
+
 function ConstraintAnnotationCollection({
   bounds,
   glyphs,
@@ -4437,9 +4477,20 @@ function ConstraintAnnotationCollection({
         ]
       : []
   })
-  const placements = layoutSketchCoordinateAnnotations(coordinates, viewport)
+  const [freeRegion, freeRegionProbe] = useWorkspaceFreeRegion()
+  const placements = layoutSketchCoordinateAnnotations(coordinates, viewport, freeRegion)
   return (
     <div className="pointer-events-none absolute inset-0 z-10">
+      <div
+        ref={freeRegionProbe}
+        aria-hidden="true"
+        data-sketch-annotation-free-region
+        className={cn(
+          "pointer-events-none invisible absolute",
+          "top-[var(--workspace-chrome-top,0px)] right-[var(--workspace-chrome-right,0px)]",
+          "bottom-[var(--workspace-chrome-bottom,0px)] left-[var(--workspace-chrome-left,0px)]",
+        )}
+      />
       {glyphs
         .filter(
           (glyph) =>

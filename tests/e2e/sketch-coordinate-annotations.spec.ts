@@ -4,6 +4,7 @@ import { createCoordinateSketchProject } from "../support/sketch-coordinate-fixt
 import { openApplicationMenuItem } from "./application-menu-support"
 import { saved, saveProject } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
+import { unobscuredDrawingBounds } from "./sketch-helpers"
 
 type AnnotationBrowser = { document: { querySelector(selector: string): AnnotationElement | null } }
 type AnnotationElement = {
@@ -200,6 +201,16 @@ test("shows original point formulas on hover by default, with an all-label toggl
   await page.mouse.move(5, 5)
   await expect(dimensions).toHaveCount(2)
   await expectPointLeaders(page)
+  // Like other sketch overlays, labels stay in the canvas region the floating panels leave free.
+  const free = await unobscuredDrawingBounds(page, drawing)
+  for (const dimension of await dimensions.all()) {
+    const bounds = await dimension.boundingBox()
+    if (!bounds) throw new Error("The coordinate label must be visible.")
+    expect(bounds.x).toBeGreaterThanOrEqual(free.x)
+    expect(bounds.y).toBeGreaterThanOrEqual(free.y)
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(free.x + free.width)
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(free.y + free.height)
+  }
   const label = dimensions.first()
   const before = await label.boundingBox()
   if (!before) throw new Error("The coordinate label must be visible.")

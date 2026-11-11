@@ -75,6 +75,35 @@ describe("sketch coordinate annotations", () => {
     ).toBe(0)
   })
 
+  it("keeps labels inside the canvas region left free by floating panels", () => {
+    const label = "26 mm * 1.000000000000"
+    const annotations = [
+      { id: "beside-panel", pointId: "a", anchor: { x: 650, y: 300 }, label, axis: "horizontal" },
+      { id: "under-header", pointId: "b", anchor: { x: 200, y: 20 }, label, axis: "vertical" },
+    ] as const
+    // A 300 px task panel on the right and an 80 px band on top cover part of the canvas.
+    const free = { left: 0, top: 80, right: 700, bottom: 600 }
+    const placements = layoutSketchCoordinateAnnotations(
+      annotations,
+      { width: 1000, height: 600 },
+      free,
+    )
+    const beside = placements.get("beside-panel")
+    const header = placements.get("under-header")
+    if (!beside || !header) throw new Error("Both anchors are inside the canvas.")
+    // The label flips to the free side of its point instead of sliding under the panel.
+    expect(beside.left + beside.width).toBeLessThanOrEqual(free.right - 8)
+    expect(beside.left + beside.width).toBeLessThan(650)
+    expect(beside.leaderX).toBe(beside.left + beside.width)
+    expect(header.top).toBeGreaterThanOrEqual(free.top + 12)
+    // Without a measured region the whole canvas stays available, as before.
+    expect(
+      layoutSketchCoordinateAnnotations(annotations, { width: 1000, height: 600 }).get(
+        "beside-panel",
+      )?.left,
+    ).toBe(666)
+  })
+
   it("does not attempt pixel placement before the viewport has a size", () => {
     expect(
       layoutSketchCoordinateAnnotations(

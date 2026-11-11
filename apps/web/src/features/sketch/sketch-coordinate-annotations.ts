@@ -40,24 +40,68 @@ export type CoordinateAnnotationPlacement = Readonly<{
 
 type AnnotationViewport = Readonly<{ width: number; height: number }>
 
+/** Viewport-relative rectangle left free by floating workspace panels. */
+export type CoordinateAnnotationRegion = Readonly<{
+  left: number
+  top: number
+  right: number
+  bottom: number
+}>
+
+const annotationMargin = 8
+const annotationHalfHeight = 12
+
 function coordinateAnchorVisible(anchor: SketchPoint2, viewport: AnnotationViewport) {
   return anchor.x >= 0 && anchor.x <= viewport.width && anchor.y >= 0 && anchor.y <= viewport.height
 }
 
+function clamp(value: number, minimum: number, maximum: number) {
+  return Math.max(minimum, Math.min(maximum, value))
+}
+
+/** Panels cover part of the canvas; a region that leaves no room falls back to the whole canvas. */
+function annotationRegion(
+  viewport: AnnotationViewport,
+  free: CoordinateAnnotationRegion | undefined,
+): CoordinateAnnotationRegion {
+  const whole = { left: 0, top: 0, right: viewport.width, bottom: viewport.height }
+  if (!free) return whole
+  const region = {
+    left: clamp(free.left, 0, viewport.width),
+    top: clamp(free.top, 0, viewport.height),
+    right: clamp(free.right, 0, viewport.width),
+    bottom: clamp(free.bottom, 0, viewport.height),
+  }
+  const roomy =
+    region.right - region.left > 2 * annotationMargin &&
+    region.bottom - region.top > 2 * annotationHalfHeight
+  return roomy ? region : whole
+}
+
 function coordinateAnnotationPlacement(
   annotation: CoordinateAnnotation,
-  viewport: AnnotationViewport,
+  region: CoordinateAnnotationRegion,
 ): CoordinateAnnotationPlacement {
   const { anchor } = annotation
-  const width = Math.min(320, annotation.label.length * 7 + 12, Math.max(1, viewport.width - 16))
-  const leftSide = anchor.x < viewport.width / 2
+  const minimumLeft = region.left + annotationMargin
+  const maximumRight = region.right - annotationMargin
+  const width = Math.min(
+    320,
+    annotation.label.length * 7 + 12,
+    Math.max(1, maximumRight - minimumLeft),
+  )
+  const leftSide = anchor.x < (region.left + region.right) / 2
   const preferredLeft = leftSide ? anchor.x - width - 16 : anchor.x + 16
   const alternateLeft = leftSide ? anchor.x + 16 : anchor.x - width - 16
-  const preferredFits = preferredLeft >= 8 && preferredLeft + width <= viewport.width - 8
+  const preferredFits = preferredLeft >= minimumLeft && preferredLeft + width <= maximumRight
   const left = preferredFits
     ? preferredLeft
-    : Math.max(8, Math.min(viewport.width - width - 8, alternateLeft))
-  const top = coordinateAnnotationTop(annotation, viewport.height)
+    : Math.max(minimumLeft, Math.min(maximumRight - width, alternateLeft))
+  const top = clamp(
+    coordinateAnnotationTop(annotation, region),
+    region.top + annotationHalfHeight,
+    region.bottom - annotationHalfHeight,
+  )
   return {
     left,
     top,
@@ -67,24 +111,32 @@ function coordinateAnnotationPlacement(
   }
 }
 
-function coordinateAnnotationTop(annotation: CoordinateAnnotation, height: number) {
+function coordinateAnnotationTop(
+  annotation: CoordinateAnnotation,
+  region: CoordinateAnnotationRegion,
+) {
   const horizontal = annotation.axis === "horizontal"
-  if (annotation.anchor.y < 40) return annotation.anchor.y + (horizontal ? 18 : 54)
-  if (annotation.anchor.y > height - 40) return annotation.anchor.y - (horizontal ? 54 : 18)
+  if (annotation.anchor.y < region.top + 40) return annotation.anchor.y + (horizontal ? 18 : 54)
+  if (annotation.anchor.y > region.bottom - 40) return annotation.anchor.y - (horizontal ? 54 : 18)
   return annotation.anchor.y + (horizontal ? -18 : 18)
 }
 
-/** Stable screen-space offsets preserve the relationship to the point while the camera moves. */
+/**
+ * Stable screen-space offsets preserve the relationship to the point while the camera moves.
+ * Labels stay inside the canvas region the floating panels leave free, so they remain editable.
+ */
 export function layoutSketchCoordinateAnnotations(
   annotations: readonly CoordinateAnnotation[],
   viewport: AnnotationViewport,
+  freeRegion?: CoordinateAnnotationRegion,
 ) {
   const placements = new Map<string, CoordinateAnnotationPlacement>()
   if (viewport.width <= 0 || viewport.height <= 0) return placements
+  const region = annotationRegion(viewport, freeRegion)
   for (const annotation of annotations.filter(({ anchor }) =>
     coordinateAnchorVisible(anchor, viewport),
   )) {
-    placements.set(annotation.id, coordinateAnnotationPlacement(annotation, viewport))
+    placements.set(annotation.id, coordinateAnnotationPlacement(annotation, region))
   }
   return placements
 }
