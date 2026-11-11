@@ -181,6 +181,13 @@ test("prints an editable MCP mounting plate while preserving a manual browser di
       .filter({ has: page.locator('input[value="plateWidth"]') })
     await widthRow.getByRole("combobox", { name: "Variable expression", exact: true }).fill("90 mm")
     await page.getByRole("button", { name: "Apply variables", exact: true }).click()
+    // Variables is a modal dialog; close it before reading the status bar behind it.
+    const variables = page.getByRole("dialog", { name: "Variables", exact: true })
+    await variables
+      .getByRole("button", { name: "Done", exact: true })
+      .filter({ hasText: "Done" })
+      .click()
+    await expect(variables).toHaveCount(0)
     await expect(
       page
         .getByRole("status", { name: "Project save status", exact: true })
@@ -251,7 +258,6 @@ test("prints an editable MCP mounting plate while preserving a manual browser di
     ).toBe("90 mm")
 
     const toolbar = page.getByRole("toolbar", { name: "Model commands", exact: true })
-    await toolbar.getByRole("button", { name: "Model", exact: true }).click()
     await toolbar.getByRole("button", { name: "Undo", exact: true }).click()
     const undone = await expectCurrentPlate(90, 4.4, changed.revision)
     expect(
