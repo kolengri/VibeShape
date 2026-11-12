@@ -34,18 +34,47 @@ async function scrollBodiesToEnd(contents: readonly Locator[]) {
   }
 }
 
+const scrollCue = '[data-slot="task-panel-scroll-cue"]'
+
 /**
- * A sheet too short for a pinned footer above the minimum field scrollport scrolls the footer into
- * reach instead; either way the footer must end inside the task window once revealed.
+ * First render of a sheet too short for a pinned footer beside the 64 px field scrollport: one
+ * scroller at its top, the footer below the visible region, and the scroll cue shown.
  */
-async function expectFooterReachable(task: Locator, footer: Locator) {
-  await footer.scrollIntoViewIfNeeded()
+async function expectFlowFooterAtFirstRender(task: Locator, layout: Locator, footer: Locator) {
+  await expect(layout).toHaveAttribute("data-footer-layout", "flow")
+  expect(await layout.evaluate((element) => element.scrollTop)).toBe(0)
+  await expect(layout.locator(scrollCue)).toBeVisible()
+  const taskBounds = await layoutBounds(task)
+  const footerBounds = await layoutBounds(footer)
+  expect(footerBounds.y + footerBounds.height).toBeGreaterThan(taskBounds.y + taskBounds.height)
+  expect(
+    await layout.locator('[data-slot="task-panel-content"]').evaluate((e) => e.clientHeight),
+  ).toBeGreaterThanOrEqual(64)
+}
+
+/** A pinned footer is fully visible inside the task window without scrolling and has no cue. */
+async function expectPinnedFooter(task: Locator, layout: Locator, footer: Locator) {
+  await expect(layout).toHaveAttribute("data-footer-layout", "pinned")
+  await expect(layout.locator(scrollCue)).toHaveCount(0)
+  await expectFooterInside(task, footer)
+}
+
+async function expectFooterInside(task: Locator, footer: Locator) {
   const taskBounds = await layoutBounds(task)
   const footerBounds = await layoutBounds(footer)
   expect(footerBounds.y).toBeGreaterThanOrEqual(taskBounds.y - 1)
   expect(footerBounds.y + footerBounds.height).toBeLessThanOrEqual(
     taskBounds.y + taskBounds.height + 1,
   )
+}
+
+/** Scrolling the flow layout to its end reveals the whole footer and removes the cue. */
+async function expectFlowFooterReachable(task: Locator, layout: Locator, footer: Locator) {
+  await layout.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await expect(layout.locator(scrollCue)).toHaveCount(0)
+  await expectFooterInside(task, footer)
 }
 
 async function expectViewportControlsAboveTask(page: Page, task: Locator) {
@@ -72,39 +101,36 @@ test("keeps task chrome reachable at a 200% equivalent viewport", async ({ page 
   const footer = form.locator('[data-slot="task-panel-footer"]')
   const cancel = footer.getByRole("button", { name: "Cancel", exact: true })
   const accept = footer.getByRole("button", { name: "Create cylinder", exact: true })
-  await expect(cancel).toBeInViewport()
-  await expect(accept).toBeInViewport()
+  const layout = form.locator('[data-slot="task-panel-layout"]')
   const toolbarBounds = await page.locator("nav[data-sketch-mode]").boundingBox()
   const historyBounds = await page.locator(".workspace-history").boundingBox()
   const taskBounds = await task.boundingBox()
   const headerBounds = await header.boundingBox()
-  const footerBounds = await footer.boundingBox()
-  if (!toolbarBounds || !historyBounds || !taskBounds || !headerBounds || !footerBounds)
+  if (!toolbarBounds || !historyBounds || !taskBounds || !headerBounds)
     throw new Error("Task chrome must have bounds.")
   expect(taskBounds.y).toBeGreaterThanOrEqual(toolbarBounds.y + toolbarBounds.height)
   expect(taskBounds.y + taskBounds.height).toBeLessThanOrEqual(historyBounds.y)
-  expect(footerBounds.y).toBeGreaterThanOrEqual(headerBounds.y + headerBounds.height)
+  // The header, a 64 px field scrollport and the footer do not fit this sheet.
+  await expectFlowFooterAtFirstRender(task, layout, footer)
+  expect((await layoutBounds(footer)).y).toBeGreaterThanOrEqual(
+    headerBounds.y + headerBounds.height,
+  )
+  await expectFlowFooterReachable(task, layout, footer)
   expect(await cancel.evaluate((element) => element.getBoundingClientRect().height)).toBe(32)
   expect(await accept.evaluate((element) => element.getBoundingClientRect().height)).toBe(32)
-  // Fields keep a usable scrollport even when the footer has to scroll into reach.
-  expect(
-    await form
-      .locator('[data-slot="task-panel-content"]')
-      .evaluate((element) => element.clientHeight),
-  ).toBeGreaterThanOrEqual(64)
-  await expectFooterReachable(task, footer)
+  await cancel.click()
+  await expect(form).toHaveCount(0)
+  // A fresh task starts at the top of its scroller with the cue shown again.
+  await invokeModelCommand(page, "Primitives", "Cylinder")
+  await expectFlowFooterAtFirstRender(task, layout, footer)
   await cancel.click()
   await expect(form).toHaveCount(0)
   await invokeModelCommand(page, "Create", "Create sketch")
   await page.getByRole("button", { name: "Open task panel", exact: true }).click()
-  const sketchHeader = task.locator('[data-slot="task-panel-header"]')
+  const sketchLayout = task.locator('[data-slot="task-panel-layout"]')
   const sketchFooter = task.locator('[data-slot="task-panel-footer"]')
-  const sketchHeaderBounds = await layoutBounds(sketchHeader)
-  const sketchFooterBounds = await layoutBounds(sketchFooter)
-  expect(sketchFooterBounds.y).toBeGreaterThanOrEqual(
-    sketchHeaderBounds.y + sketchHeaderBounds.height,
-  )
-  await expectFooterReachable(task, sketchFooter)
+  await expectFlowFooterAtFirstRender(task, sketchLayout, sketchFooter)
+  await expectFlowFooterReachable(task, sketchLayout, sketchFooter)
   await sketchFooter.getByRole("button", { name: "Cancel", exact: true }).click()
 })
 
@@ -176,6 +202,11 @@ test("retains compact task state with a fixed header and footer and resets a fre
   const header = form.locator('[data-slot="task-panel-header"]')
   const footer = form.locator('[data-slot="task-panel-footer"]')
   await expect(form).toBeVisible()
+  await expectPinnedFooter(
+    page.locator(".workspace-panel--task"),
+    form.locator('[data-slot="task-panel-layout"]'),
+    footer,
+  )
   await form.getByRole("combobox", { name: "Height", exact: true }).fill("23 mm")
   await setAdditionalRows([fields], true)
   await expect
@@ -286,13 +317,16 @@ test("keeps Fillet fields, pick buttons and Apply clickable in a 512 × 360 comp
   )
   await invokeModelCommand(page, "Modify", "Fillet")
   const form = page.getByRole("form", { name: "Create fillet", exact: true })
+  const task = page.locator(".workspace-panel--task")
+  const layout = form.locator('[data-slot="task-panel-layout"]')
   const content = form.locator('[data-slot="task-panel-content"]')
   const footer = form.locator('[data-slot="task-panel-footer"]')
-  expect(await content.evaluate((element) => element.clientHeight)).toBeGreaterThanOrEqual(64)
+  await expectFlowFooterAtFirstRender(task, layout, footer)
   const contentBounds = await layoutBounds(content)
-  const footerBounds = await layoutBounds(footer)
   // The footer follows the fields instead of covering them.
-  expect(footerBounds.y).toBeGreaterThanOrEqual(contentBounds.y + contentBounds.height - 1)
+  expect((await layoutBounds(footer)).y).toBeGreaterThanOrEqual(
+    contentBounds.y + contentBounds.height - 1,
+  )
 
   // Playwright clicks fail when another element intercepts the pointer at the target.
   await form.getByRole("radio", { name: "Selected edges", exact: true }).click()
@@ -310,6 +344,7 @@ test("keeps Fillet fields, pick buttons and Apply clickable in a 512 × 360 comp
   await expect(form.getByRole("button", { name: /^Remove Edge \d+$/ })).toHaveCount(1)
   const apply = footer.getByRole("button", { name: "Create fillet", exact: true })
   await expect(apply).toBeEnabled({ timeout: 30_000 })
+  await expectFlowFooterReachable(task, layout, footer)
   await apply.click()
   await expect(form).toHaveCount(0, { timeout: 30_000 })
   await expect(page.getByRole("button", { name: "Undo", exact: true })).toBeEnabled()
