@@ -198,3 +198,36 @@ function selectedTreatmentReferences(
   expect(parameters.tangentPropagation).toBe(true)
   return parameters.targets.flatMap((target) => (target.kind === "edge" ? [target.edge] : []))
 }
+
+test("keeps the first row click and focus after closing Keyboard choices and enabling Variable radius", async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+  await page.setViewportSize({ width: 1024, height: 900 })
+  await page.goto("/")
+  await saved(page)
+  await invokeModelCommand(page, "Primitives", "Box")
+  await page
+    .getByRole("form", { name: "Create box" })
+    .getByRole("button", { name: "Create box", exact: true })
+    .click()
+  await expect(page.getByRole("region", { name: "3D viewport" })).toHaveAttribute(
+    "data-rendered-feature-count",
+    "1",
+  )
+  await invokeModelCommand(page, "Modify", "Fillet")
+  const form = page.getByRole("form", { name: "Create fillet" })
+  const choices = form.getByText("Keyboard choices", { exact: true })
+  await choices.focus()
+  await choices.click()
+  await form.getByRole("button", { name: "Box 1 · Edge 1", exact: true }).click()
+  await choices.click()
+  await expect(form.locator("details")).not.toHaveAttribute("open", "")
+  // The disclosure keeps its place, so the row does not move between press and release.
+  const toggle = form.getByRole("checkbox", { name: "Variable radius for Edge 1", exact: true })
+  await toggle.click()
+  await expect(toggle).toBeChecked()
+  // The toggle switches Fillet to V3; the row keeps its DOM and the focused control.
+  await expect(form.getByRole("combobox", { name: "Start radius for Edge 1" })).toBeVisible()
+  await expect(toggle).toBeFocused()
+})

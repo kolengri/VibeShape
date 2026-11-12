@@ -25,7 +25,10 @@ function setupAction(state: StudyState) {
 }
 
 function focusTarget(panel: HTMLElement, target: HTMLElement | null) {
-  const scroller = panel.querySelector<HTMLElement>("[data-slot='task-panel-content']")
+  // A short task window scrolls as one region; otherwise only the field scrollport scrolls.
+  const scroller =
+    panel.querySelector<HTMLElement>("[data-footer-layout='flow']") ??
+    panel.querySelector<HTMLElement>("[data-slot='task-panel-content']")
   if (!target || !scroller) return
   const fieldBounds = target.getBoundingClientRect()
   const scrollBounds = scroller.getBoundingClientRect()

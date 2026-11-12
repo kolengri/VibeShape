@@ -76,7 +76,9 @@ export function ResponsiveTaskPanel({
     const element = content.current
     if (!element) return
     element.scrollTop = 0
-    for (const panel of element.querySelectorAll<HTMLElement>("[data-slot='task-panel-content']")) {
+    for (const panel of element.querySelectorAll<HTMLElement>(
+      "[data-slot='task-panel-layout'], [data-slot='task-panel-content']",
+    )) {
       panel.scrollTop = 0
     }
   }, [activeTaskKey, expansion.taskKey])
