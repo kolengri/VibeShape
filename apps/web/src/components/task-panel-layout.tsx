@@ -89,12 +89,15 @@ function TaskPanelLayoutContent({
 }) {
   const supplement = useContext(supplementalContent)
   const collapse = useWindowCollapse()
+  // The fields keep a minimum scrollport. When the header, that minimum and the footer exceed a
+  // short sheet (200% zoom on a compact window), the layout scrolls the footer into reach instead
+  // of collapsing the fields to zero height beneath it.
   return (
     <div
       data-slot="task-panel-layout"
       data-window-collapsed={collapse?.collapsed}
       className={cn(
-        "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+        "flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain",
         "[&_[data-slot=input]]:h-7 [&_[data-slot=input]]:px-2 [&_[data-slot=input]]:text-xs",
         className,
       )}
@@ -104,10 +107,7 @@ function TaskPanelLayoutContent({
         data-slot="task-panel-content"
         id={collapse?.contentId}
         inert={collapse?.collapsed}
-        className={cn(
-          "min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain",
-          contentClassName,
-        )}
+        className={cn("min-h-16 min-w-0 flex-1 overflow-y-auto", contentClassName)}
       >
         <div className="grid min-w-0 content-start gap-1.5 p-2">
           {instruction ? (

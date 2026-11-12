@@ -34,6 +34,20 @@ async function scrollBodiesToEnd(contents: readonly Locator[]) {
   }
 }
 
+/**
+ * A sheet too short for a pinned footer above the minimum field scrollport scrolls the footer into
+ * reach instead; either way the footer must end inside the task window once revealed.
+ */
+async function expectFooterReachable(task: Locator, footer: Locator) {
+  await footer.scrollIntoViewIfNeeded()
+  const taskBounds = await layoutBounds(task)
+  const footerBounds = await layoutBounds(footer)
+  expect(footerBounds.y).toBeGreaterThanOrEqual(taskBounds.y - 1)
+  expect(footerBounds.y + footerBounds.height).toBeLessThanOrEqual(
+    taskBounds.y + taskBounds.height + 1,
+  )
+}
+
 async function expectViewportControlsAboveTask(page: Page, task: Locator) {
   await expect
     .poll(async () => {
@@ -70,31 +84,27 @@ test("keeps task chrome reachable at a 200% equivalent viewport", async ({ page 
   expect(taskBounds.y).toBeGreaterThanOrEqual(toolbarBounds.y + toolbarBounds.height)
   expect(taskBounds.y + taskBounds.height).toBeLessThanOrEqual(historyBounds.y)
   expect(footerBounds.y).toBeGreaterThanOrEqual(headerBounds.y + headerBounds.height)
-  expect(footerBounds.y + footerBounds.height).toBeLessThanOrEqual(taskBounds.y + taskBounds.height)
   expect(await cancel.evaluate((element) => element.getBoundingClientRect().height)).toBe(32)
   expect(await accept.evaluate((element) => element.getBoundingClientRect().height)).toBe(32)
+  // Fields keep a usable scrollport even when the footer has to scroll into reach.
   expect(
     await form
       .locator('[data-slot="task-panel-content"]')
       .evaluate((element) => element.clientHeight),
-  ).toBeGreaterThan(0)
+  ).toBeGreaterThanOrEqual(64)
+  await expectFooterReachable(task, footer)
   await cancel.click()
   await expect(form).toHaveCount(0)
   await invokeModelCommand(page, "Create", "Create sketch")
   await page.getByRole("button", { name: "Open task panel", exact: true }).click()
   const sketchHeader = task.locator('[data-slot="task-panel-header"]')
   const sketchFooter = task.locator('[data-slot="task-panel-footer"]')
-  const sketchHeaderBounds = await sketchHeader.boundingBox()
-  const sketchFooterBounds = await sketchFooter.boundingBox()
-  const sketchTaskBounds = await task.boundingBox()
-  if (!sketchHeaderBounds || !sketchFooterBounds || !sketchTaskBounds)
-    throw new Error("Sketch chrome must have bounds.")
+  const sketchHeaderBounds = await layoutBounds(sketchHeader)
+  const sketchFooterBounds = await layoutBounds(sketchFooter)
   expect(sketchFooterBounds.y).toBeGreaterThanOrEqual(
     sketchHeaderBounds.y + sketchHeaderBounds.height,
   )
-  expect(sketchFooterBounds.y + sketchFooterBounds.height).toBeLessThanOrEqual(
-    sketchTaskBounds.y + sketchTaskBounds.height,
-  )
+  await expectFooterReachable(task, sketchFooter)
   await sketchFooter.getByRole("button", { name: "Cancel", exact: true }).click()
 })
 
@@ -255,4 +265,52 @@ test("keeps variable rows compact and scrolls the table inside its dialog", asyn
   expect(dimensions.content).toBeGreaterThan(dimensions.height)
   for (const height of dimensions.rowHeights) expect(height).toBeLessThanOrEqual(60)
   await page.screenshot({ path: test.info().outputPath("compact-variable-table.png") })
+})
+
+test("keeps Fillet fields, pick buttons and Apply clickable in a 512 × 360 compact sheet", async ({
+  page,
+}) => {
+  // 1024 × 720 at 200% zoom: the sheet is too short for a pinned footer above a usable body.
+  await page.setViewportSize({ width: 512, height: 360 })
+  await page.goto("/")
+  await invokeModelCommand(page, "Primitives", "Box")
+  await page
+    .getByRole("form", { name: "Create box", exact: true })
+    .getByRole("button", { name: "Create box", exact: true })
+    .click()
+  // The compact window keeps the model tree in a drawer, so wait on the rendered body instead.
+  await expect(page.getByRole("region", { name: "3D viewport" })).toHaveAttribute(
+    "data-rendered-feature-count",
+    "1",
+    { timeout: 30_000 },
+  )
+  await invokeModelCommand(page, "Modify", "Fillet")
+  const form = page.getByRole("form", { name: "Create fillet", exact: true })
+  const content = form.locator('[data-slot="task-panel-content"]')
+  const footer = form.locator('[data-slot="task-panel-footer"]')
+  expect(await content.evaluate((element) => element.clientHeight)).toBeGreaterThanOrEqual(64)
+  const contentBounds = await layoutBounds(content)
+  const footerBounds = await layoutBounds(footer)
+  // The footer follows the fields instead of covering them.
+  expect(footerBounds.y).toBeGreaterThanOrEqual(contentBounds.y + contentBounds.height - 1)
+
+  // Playwright clicks fail when another element intercepts the pointer at the target.
+  await form.getByRole("radio", { name: "Selected edges", exact: true }).click()
+  const pickEdges = form.getByRole("button", { name: "Pick edges in viewport", exact: true })
+  await pickEdges.click()
+  await expect(pickEdges).toHaveAttribute("aria-pressed", "false")
+  await pickEdges.click()
+  await expect(pickEdges).toHaveAttribute("aria-pressed", "true")
+  await form.getByRole("button", { name: "Pick faces in viewport", exact: true }).click()
+  await pickEdges.click()
+  const choices = form.getByText("Keyboard choices", { exact: true })
+  await choices.focus()
+  await choices.click()
+  await form.getByRole("button", { name: "Box 1 · Edge 1", exact: true }).click()
+  await expect(form.getByRole("button", { name: /^Remove Edge \d+$/ })).toHaveCount(1)
+  const apply = footer.getByRole("button", { name: "Create fillet", exact: true })
+  await expect(apply).toBeEnabled({ timeout: 30_000 })
+  await apply.click()
+  await expect(form).toHaveCount(0, { timeout: 30_000 })
+  await expect(page.getByRole("button", { name: "Undo", exact: true })).toBeEnabled()
 })
