@@ -450,8 +450,7 @@ async function initializeViewport(
         if (!mount.cancelled) mount.onEdgePreparationError()
       },
       orientationInsetOffsetElement: orientationInsetOffsetElement(canvas),
-      orientationInputElement: () =>
-        latestSketchContextRef.current?.projectionStore?.getState().navigationElement ?? null,
+      orientationInputElement: () => sketchPointerElement(latestSketchContextRef.current),
       onOrientationNavigationStart: () =>
         latestSketchContextRef.current?.onOrientationNavigationStart?.(),
       isSelectionCandidateEligible: (selection) => {
@@ -627,7 +626,22 @@ function synchronizeViewportSketchNavigation(
   viewport.setSketchPlaneProjection(context.frame, (projection) =>
     context.projectionStore?.getState().publishCameraProjection(projection),
   )
-  viewport.setSketchNavigationElement(context.projectionStore?.getState().navigationElement ?? null)
+  viewport.setSketchNavigationElement(sketchNavigationElement(context))
+}
+
+/**
+ * The analytical drawing receives orbit navigation only while it owns the pointer. Use, Pierce
+ * and Intersection make it inert and hand the pointer to the 3D selection broker, so camera
+ * navigation must then listen on the canvas or middle- and secondary-drag would be lost.
+ */
+function sketchNavigationElement(context: GeometryViewportSketchContext | null | undefined) {
+  return context?.mode === "orbit" ? sketchPointerElement(context) : null
+}
+
+/** The analytical drawing while it owns pointer input; null while a 3D selection tool does. */
+function sketchPointerElement(context: GeometryViewportSketchContext | null | undefined) {
+  if (context?.referenceSelection || context?.faceIntersectionSelection) return null
+  return context?.projectionStore?.getState().navigationElement ?? null
 }
 
 function orbitReferenceSelection(context: GeometryViewportSketchContext | null) {
@@ -1725,10 +1739,11 @@ function useSketchNavigationSynchronization(
   useEffect(() => {
     const store = sketchContext?.projectionStore
     if (!store || sketchContext.mode !== "orbit") return
-    let navigationElement = store.getState().navigationElement
-    const unsubscribe = store.subscribe((state) => {
-      if (state.navigationElement === navigationElement) return
-      navigationElement = state.navigationElement
+    let navigationElement = sketchNavigationElement(sketchContext)
+    const unsubscribe = store.subscribe(() => {
+      const next = sketchNavigationElement(sketchContext)
+      if (next === navigationElement) return
+      navigationElement = next
       viewportRef.current?.setSketchNavigationElement(navigationElement)
     })
     return unsubscribe

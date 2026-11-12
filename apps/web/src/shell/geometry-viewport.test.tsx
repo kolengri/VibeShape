@@ -1977,6 +1977,54 @@ describe("GeometryViewport", () => {
     expect(port.setSketchNavigationElement).toHaveBeenLastCalledWith(null)
   })
 
+  it("binds orbit navigation to the canvas while a 3D selection tool makes the drawing inert", async () => {
+    const frame = {
+      origin: [0, 0, 0],
+      xAxis: [1, 0, 0],
+      yAxis: [0, 1, 0],
+      normal: [0, 0, 1],
+    } as const
+    const store = createSketchProjectionStore()
+    const navigationElement = document.createElement("div")
+    store.getState().setNavigationElement(navigationElement)
+    const { port, rerenderSketchContext } = renderViewport(
+      readyController([], []),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { frame, mode: "orbit", projectionStore: store },
+    )
+    await waitFor(() =>
+      expect(port.setSketchNavigationElement).toHaveBeenLastCalledWith(navigationElement),
+    )
+
+    // Intersection hands the pointer to the 3D broker; middle and secondary drag stay usable.
+    rerenderSketchContext({
+      frame,
+      mode: "orbit",
+      projectionStore: store,
+      faceIntersectionSelection: { onSelect: vi.fn() },
+    })
+    expect(port.setSketchNavigationElement).toHaveBeenLastCalledWith(null)
+    // A drawing remount while the broker owns the pointer does not rebind navigation to it.
+    act(() => store.getState().setNavigationElement(document.createElement("div")))
+    expect(port.setSketchNavigationElement).toHaveBeenLastCalledWith(null)
+    rerenderSketchContext({
+      frame,
+      mode: "orbit",
+      projectionStore: store,
+      referenceSelection: { candidates: [], onSelect: vi.fn() },
+    })
+    expect(port.setSketchNavigationElement).toHaveBeenLastCalledWith(null)
+
+    rerenderSketchContext({ frame, mode: "orbit", projectionStore: store })
+    expect(port.setSketchNavigationElement).toHaveBeenLastCalledWith(
+      store.getState().navigationElement,
+    )
+  })
+
   it("routes graphical sketch-reference hover and selection through the persistent 3D viewer", async () => {
     const candidate = {
       kind: "point" as const,
