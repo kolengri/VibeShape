@@ -1973,6 +1973,48 @@ describe("ModelTree History failure", () => {
   )
 })
 
+it("shows History's sketch repair intent as an open-to-repair cue in the model browser", async () => {
+  const user = userEvent.setup()
+  const fixture = authoredInsertionController()
+  const authority = fixture.controller.authoredSnapshot
+  const report = fixture.controller.report
+  if (!authority || authority.schemaVersion === 1 || !report)
+    throw new Error("Expected authored History.")
+  const history = [...authority.history, { kind: "sketch" as const, id: sketchId }]
+  // Delete-and-keep-references leaves the live sketch disconnected and the authored recipe as a
+  // repair intent; the live reference health has nothing broken left to count.
+  const repairAuthority = {
+    ...authority,
+    schemaVersion: 5,
+    sketches: [...authority.sketches, sketch],
+    history,
+    repairIntents: [{ kind: "sketch", authored: sketch, missingInputs: [] }],
+  } as unknown as typeof authority
+  const onSketchActivate = vi.fn()
+  renderTree({
+    controller: {
+      ...fixture.controller,
+      historyInsertion: null,
+      authoredSnapshot: repairAuthority,
+      report: {
+        ...report,
+        historyItems: history,
+        snapshot: { ...report.snapshot, sketches: [...report.snapshot.sketches, sketch] },
+      },
+    },
+    onSketchActivate,
+  })
+
+  const cue = browser().getByRole("button", {
+    name: "Open Profile to select replacement references",
+  })
+  expect(
+    timeline().getByRole("button", { name: "Open Profile to select replacement references" }),
+  ).toBeTruthy()
+  await user.click(cue)
+  expect(onSketchActivate).toHaveBeenCalledWith(sketchId)
+})
+
 describe("ModelTree folder selection descriptions", () => {
   it("announces feature and sketch grouping selection without changing edit selection or browser names", async () => {
     const user = userEvent.setup()

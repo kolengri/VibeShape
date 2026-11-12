@@ -313,6 +313,19 @@
   pointer-events: auto;
 }
 
+/* Below the sm breakpoint (the 640 px compact-chat threshold), open chat is a bottom sheet whose
+   actions sit where notifications stack, so notifications move to the top while it is shown. */
+@media (width < 40rem) {
+  body:has(
+      .viewport-grid__item[data-viewport-area="bottom"]
+        .assistant-panel:not([hidden], [data-window-collapsed="true"])
+    )
+    [data-slot="notification-viewport"] {
+    top: 0.75rem;
+    bottom: auto;
+  }
+}
+
 @media (max-height: 480px) {
   .cad-shell {
     --workspace-gap: 0.25rem;

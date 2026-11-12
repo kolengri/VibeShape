@@ -93,6 +93,18 @@ async function projectedOrigin(canvas: Locator) {
   return { x: bounds.x + x, y: bounds.y + y }
 }
 
+/** The viewer publishes each visible plane handle's projected center beside the gizmo origin. */
+async function xyPlaneHandle(canvas: Locator) {
+  await expect(canvas).toHaveAttribute("data-translation-gizmo-planes", /(^|;)xy:/)
+  const bounds = await canvas.boundingBox()
+  const raw = await canvas.getAttribute("data-translation-gizmo-planes")
+  const entry = raw?.split(";").find((handle) => handle.startsWith("xy:"))
+  const [x, y] = (entry?.slice(3) ?? "").split(",").map(Number)
+  if (!bounds || x === undefined || y === undefined || !Number.isFinite(x + y))
+    throw new Error("The Placement XY plane handle must have a finite projected center.")
+  return { x: bounds.x + x, y: bounds.y + y }
+}
+
 async function translationHandle(canvas: Locator) {
   const origin = await projectedOrigin(canvas)
   return { x: origin.x + 82, y: origin.y + 40 }
@@ -378,8 +390,9 @@ async function dragXYPlacement(
 ) {
   const before = await readTranslation(draft)
   const origin = await projectedOrigin(draft.canvas)
-  // The fitted isometric view projects the blue XY square between the positive X/Y arrows.
-  const square = { x: origin.x + 42, y: origin.y }
+  // Pick the blue XY square at its projected center; a fixed screen offset from the origin
+  // depends on the canvas size and can land on the neighbouring XZ handle.
+  const square = await xyPlaneHandle(draft.canvas)
   await page.mouse.move(square.x, square.y)
   await page.mouse.down()
   await expect(draft.canvas).toHaveAttribute("data-translation-gizmo-dragging", "true")

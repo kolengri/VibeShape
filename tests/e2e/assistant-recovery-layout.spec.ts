@@ -1,3 +1,4 @@
+import type { Locator } from "@playwright/test"
 import type {
   AssistantBridge,
   AssistantEvent,
@@ -5,6 +6,27 @@ import type {
 } from "../../packages/automation-api/src/assistant"
 import { expect, test } from "./fixtures"
 import { routeNativeProjectAccess } from "./native-project-access-support"
+
+type HitTestElement = {
+  contains(other: unknown): boolean
+  getBoundingClientRect(): { left: number; top: number; right: number; bottom: number }
+  ownerDocument: { elementFromPoint(x: number, y: number): unknown }
+}
+
+/** Corners (inset 2 px) of the control that another layer covers. */
+function coveredRetryCorners(control: Locator) {
+  return control.evaluate((element) => {
+    const button = element as unknown as HitTestElement
+    const box = button.getBoundingClientRect()
+    const corners = [
+      [box.left + 2, box.top + 2],
+      [box.right - 2, box.top + 2],
+      [box.left + 2, box.bottom - 2],
+      [box.right - 2, box.bottom - 2],
+    ] as const
+    return corners.filter(([x, y]) => !button.contains(button.ownerDocument.elementFromPoint(x, y)))
+  })
+}
 
 test("keeps recovery copy and retry in the session tray below message actions in compact chat", async ({
   page,
@@ -101,6 +123,10 @@ test("keeps recovery copy and retry in the session tray below message actions in
       for (const zoom of [1, 2]) {
         // A 200% equivalent viewport; CSS zoom does not scale the viewport units the shell uses.
         await page.setViewportSize({ width: width / zoom, height: 900 / zoom })
+        // The viewport grid re-measures in an animation frame; read every box from that layout.
+        await page.evaluate(
+          "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+        )
         const bounds = await composer.boundingBox()
         const copyBounds = await status.boundingBox()
         const recoveryBounds = await status.locator("..").boundingBox()
@@ -114,6 +140,8 @@ test("keeps recovery copy and retry in the session tray below message actions in
         expect(sendBounds.y + sendBounds.height).toBeLessThanOrEqual(retryBounds.y)
         expect(retryBounds.x + retryBounds.width).toBeLessThanOrEqual(bounds.x + bounds.width)
         await expect(retry).toBeInViewport({ ratio: 1 })
+        // toBeInViewport ignores covering layers; the agent-exited notification is still shown.
+        expect(await coveredRetryCorners(retry)).toEqual([])
         await expect(send).toBeInViewport({ ratio: 1 })
         await page.screenshot({
           path: test.info().outputPath(`recovery-${width}-${theme}-${zoom}.png`),
@@ -124,6 +152,8 @@ test("keeps recovery copy and retry in the session tray below message actions in
   await retry.focus()
   await page.keyboard.press("Enter")
   await expect(retry).toHaveCount(0)
+  // A manual retry restarts the backoff sequence, so its first attempt runs after 5 s.
+  await page.clock.runFor(5_000)
   await expect(message).toBeEnabled()
   await expect(message).toHaveValue("Keep this draft through recovery")
 })

@@ -350,8 +350,14 @@ function indexPreviousState(
   )
   if (!allGeometryById) return null
 
-  const records = [...parsed.recordsById.values()].filter((record) =>
-    graph.getFeature(record.featureId),
+  // A scoped graph (for example a preview) can omit features the previous state referenced. A
+  // record blocked by an omitted feature is stale, so its feature is evaluated again instead of
+  // invalidating every previous result.
+  const records = [...parsed.recordsById.values()].filter(
+    (record) =>
+      graph.getFeature(record.featureId) &&
+      (record.status !== "blocked" ||
+        record.blockedBy.every((blocker) => graph.getFeature(blocker) !== undefined)),
   )
   const geometryById = new Map(
     [...allGeometryById].filter(([featureId]) => graph.getFeature(featureId)),

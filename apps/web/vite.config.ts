@@ -143,7 +143,15 @@ export default defineConfig(async (environment) => {
 
   return {
     // Worker-only imports escape the initial crawl; discovering them on New project reloads the page.
-    optimizeDeps: { include: ["replicad", "replicad-opencascadejs"] },
+    // MarchingCubes is reached only from the Quick lightweighting worker, so the first organic
+    // preview on a cold cache reloaded the page and closed its task.
+    optimizeDeps: {
+      include: [
+        "replicad",
+        "replicad-opencascadejs",
+        "@vibeshape/structural-optimization > three/addons/objects/MarchingCubes.js",
+      ],
+    },
     plugins: [
       uiPluginRuntimeHeaders(),
       ...(await developmentPlugins(environment)),

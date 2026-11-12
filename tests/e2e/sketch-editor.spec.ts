@@ -14,6 +14,7 @@ import {
   selectOriginPlaneInViewport,
   selectSketchEntities,
   selectSketchTool,
+  sketchScreenPoint,
   unobscuredDrawingBounds,
 } from "./sketch-helpers"
 
@@ -234,21 +235,8 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page, "xy")
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    const center = await drawing.evaluate((element) => {
-      const svg = element as unknown as {
-        getBoundingClientRect(): { height: number; left: number; top: number; width: number }
-        viewBox: {
-          baseVal: { height: number; width: number; x: number; y: number }
-        }
-      }
-      const bounds = svg.getBoundingClientRect()
-      const viewBox = svg.viewBox.baseVal
-      const sketchPoint = { x: 30, y: 20 }
-      return {
-        x: bounds.left + ((sketchPoint.x - viewBox.x) / viewBox.width) * bounds.width,
-        y: bounds.top + ((-sketchPoint.y - viewBox.y) / viewBox.height) * bounds.height,
-      }
-    })
+    // The drawing renders through its plane projection, so the SVG viewBox is not sketch space.
+    const center = await sketchScreenPoint(drawing, 30, 20)
     await page.getByRole("button", { name: "Point", exact: true }).click()
 
     await page.keyboard.down("Shift")
@@ -572,6 +560,11 @@ test.describe("full sketch editor", () => {
       .getByRole("alert")
       .filter({ hasText: "Missing references — open this item to select replacement inputs." })
     await expect(repairSketch).toBeVisible()
+    // The model browser flags the same repair intent instead of leaving the sketch looking healthy.
+    const browserRepairCue = page
+      .getByRole("complementary", { name: "Model tree", exact: true })
+      .getByRole("button", { name: "Open Sketch 1 to select replacement references", exact: true })
+    await expect(browserRepairCue).toBeVisible()
     await expect(
       page
         .getByRole("status", { name: "Project save status", exact: true })
@@ -593,6 +586,7 @@ test.describe("full sketch editor", () => {
         .filter({ hasText: /^Saved$/ }),
     ).toBeVisible()
     await expect(repairSketch).toHaveCount(0)
+    await expect(browserRepairCue).toHaveCount(0)
 
     await page.reload()
     await expect(repairSketch).toHaveCount(0)
@@ -946,6 +940,18 @@ test.describe("full sketch editor", () => {
     let selected = false
     const centerX = canvasBounds.x + canvasBounds.width / 2
     const centerY = canvasBounds.y + canvasBounds.height / 2
+    // confirmSketchPlane opens Sketch 2 normal to XY, where the XZ source line is seen end-on and
+    // is not offered. Middle drag orbits while Pierce owns the pointer.
+    await page.mouse.move(centerX, centerY)
+    await page.mouse.down({ button: "middle" })
+    await page.mouse.move(centerX + 100, centerY - 60, { steps: 8 })
+    await page.mouse.up({ button: "middle" })
+    await expect(
+      page.getByText(
+        "Pierce · Select an earlier-sketch line or model edge that crosses the active plane",
+        { exact: true },
+      ),
+    ).toBeVisible()
     const centeredOffsets = (maximum: number) =>
       Array.from({ length: maximum / 4 + 1 }, (_, index) =>
         index === 0 ? 0 : Math.ceil(index / 2) * 8 * (index % 2 === 0 ? -1 : 1),
@@ -2222,7 +2228,15 @@ test.describe("full sketch editor", () => {
     await dimensionAnnotation.dblclick()
     await inlineExpression.fill("35 mm")
     await page.getByRole("button", { name: "Apply dimension" }).click()
+    await expect(dimensionAnnotation).toHaveCount(0)
+    await expect(
+      page.getByRole("region", { name: "2D sketch workspace" }).getByRole("button", {
+        name: "Edit dimension 35 mm",
+      }),
+    ).toBeVisible()
 
+    // Applying an edited value closes the Constraint manager fallback; reopen it to inspect.
+    await openConstraintManager(page)
     const updatedConstraint = page.getByRole("listitem").filter({ hasText: "Distance · 35 mm" })
     await expect(updatedConstraint).toBeVisible()
     await expect(page.getByRole("form", { name: "Dimension value" })).toHaveCount(0)
@@ -2477,20 +2491,45 @@ test.describe("full sketch editor", () => {
     await confirmSketchPlane(page)
     const drawing = await drawRectangle(page)
     const bounds = await unobscuredDrawingBounds(page, drawing)
-    for (let index = 0; index < 24; index += 1) {
-      await selectSketchTool(page, "Rectangle tools", "Rectangle G")
-      const column = index % 6
-      const row = Math.floor(index / 6)
+    const initialDrawingBounds = await drawing.boundingBox()
+    if (!initialDrawingBounds) throw new Error("The sketch canvas is not visible.")
+    // Floating view controls (for example Show all point dimensions) sit inside the free canvas;
+    // skip grid cells whose corners would land on them instead of on the drawing. Seven columns
+    // keep all 24 rectangles in the upper rows, clear of the orientation inset's orbit handle.
+    let drawn = 0
+    for (let cell = 0; cell < 28 && drawn < 24; cell += 1) {
+      const column = cell % 7
+      const row = Math.floor(cell / 7)
       const left = 0.1 + column * 0.13
       const top = 0.12 + row * 0.17
-      await page.mouse.click(bounds.x + bounds.width * left, bounds.y + bounds.height * top)
-      await page.mouse.click(
-        bounds.x + bounds.width * (left + 0.08),
-        bounds.y + bounds.height * (top + 0.1),
+      const corners = [
+        [left, top],
+        [left + 0.08, top],
+        [left + 0.08, top + 0.1],
+        [left, top + 0.1],
+      ].map(([x = 0, y = 0]) => ({
+        x: bounds.x + bounds.width * x,
+        y: bounds.y + bounds.height * y,
+      }))
+      const reachable = await drawing.evaluate(
+        (element, points) =>
+          points.every(({ x, y }) => {
+            const hit = element.ownerDocument.elementFromPoint(x, y)
+            return hit !== null && element.contains(hit)
+          }),
+        corners,
       )
-      await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(8 + index * 4)
+      if (!reachable) continue
+      await selectSketchTool(page, "Rectangle tools", "Rectangle G")
+      const [first, , second] = corners
+      if (!first || !second) throw new Error("A rectangle cell needs two opposite corners.")
+      await page.mouse.click(first.x, first.y)
+      await page.mouse.click(second.x, second.y)
+      drawn += 1
+      await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4 + drawn * 4)
       await page.keyboard.press("Escape")
     }
+    expect(drawn).toBe(24)
     await page.getByRole("button", { name: "Select", exact: true }).click()
     const points = drawing.locator('[data-sketch-entity-type="point"]')
     const endpoint = points.last()
@@ -2505,7 +2544,8 @@ test.describe("full sketch editor", () => {
     const startY = endpointBounds.y + endpointBounds.height / 2
     const retainedBounds = await drawing.boundingBox()
     if (!retainedBounds) throw new Error("The heavy sketch canvas is not visible.")
-    expect(retainedBounds.height).toBeCloseTo(bounds.height, 0)
+    // The drawing spans the full viewport beneath floating panels; heavy content keeps its size.
+    expect(retainedBounds.height).toBeCloseTo(initialDrawingBounds.height, 0)
     expect(startY).toBeGreaterThanOrEqual(retainedBounds.y)
     expect(startY).toBeLessThanOrEqual(retainedBounds.y + retainedBounds.height)
 
@@ -3167,18 +3207,23 @@ test.describe("full sketch editor", () => {
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
     const bounds = await unobscuredDrawingBounds(page, drawing)
 
+    // The drawing spans the full viewport, so the free region's center is not the sketch origin;
+    // place the centered slot at exact sketch coordinates through the plane projection.
+    const slotCenter = await sketchScreenPoint(drawing, 0, 0)
+    const slotEnd = await sketchScreenPoint(drawing, 30, 0)
+    const slotWidth = await sketchScreenPoint(drawing, 30, 12)
     await selectSketchTool(page, "Slot tools", "Centered slot")
-    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.5)
-    await page.mouse.move(bounds.x + bounds.width * 0.65, bounds.y + bounds.height * 0.5)
-    await expect(
-      drawing.locator('[data-sketch-preview-tool="centered-slot-end"] line'),
-    ).toHaveAttribute("x2", "30")
-    await page.mouse.click(bounds.x + bounds.width * 0.65, bounds.y + bounds.height * 0.5)
-    await page.mouse.move(bounds.x + bounds.width * 0.65, bounds.y + bounds.height * 0.38)
+    await page.mouse.click(slotCenter.x, slotCenter.y)
+    await page.mouse.move(slotEnd.x, slotEnd.y)
+    // The preview follows the sub-pixel pointer; 0.001 mm is far below one screen pixel.
+    const slotPreview = drawing.locator('[data-sketch-preview-tool="centered-slot-end"] line')
+    await expect.poll(async () => Number(await slotPreview.getAttribute("x2"))).toBeCloseTo(30, 3)
+    await page.mouse.click(slotEnd.x, slotEnd.y)
+    await page.mouse.move(slotWidth.x, slotWidth.y)
     await expect(
       drawing.locator('[data-sketch-preview-tool="centered-slot-width"] polyline'),
     ).toHaveCount(2)
-    await page.mouse.click(bounds.x + bounds.width * 0.65, bounds.y + bounds.height * 0.38)
+    await page.mouse.click(slotWidth.x, slotWidth.y)
 
     await expect(drawing.locator('[data-sketch-entity-type="point"]')).toHaveCount(7)
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(3)
@@ -3965,7 +4010,19 @@ test.describe("full sketch editor", () => {
     await midpointConstraint.hover()
     await expect(page.getByRole("tooltip", { name: "Select constraint Midpoint" })).toBeVisible()
     await expect(drawing.locator("[data-sketch-constraint-related-entity-layer]")).toBeVisible()
-    await expect(drawing.locator("[data-sketch-constraint-related-entity]")).toHaveCount(2)
+    // The new point and the first line, whose endpoints are highlighted with it.
+    const related = drawing.locator("[data-sketch-constraint-related-entity]")
+    await expect(related).toHaveCount(4)
+    const lineId = await firstLine.getAttribute("data-sketch-entity-id")
+    const pointIds = await drawing
+      .locator('circle[data-sketch-entity-type="point"]')
+      .evaluateAll((points) => points.map((point) => point.getAttribute("data-sketch-entity-id")))
+    const relatedIds = await related.evaluateAll((entities) =>
+      entities.map((entity) => entity.getAttribute("data-sketch-constraint-related-entity")),
+    )
+    expect(relatedIds).toContain(lineId)
+    // The first line's two endpoints and the midpoint; the second line's free end is unrelated.
+    expect(relatedIds.filter((id) => pointIds.includes(id))).toHaveLength(3)
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
     await midpointConstraint.click()
     await midpointConstraint.press("Delete")

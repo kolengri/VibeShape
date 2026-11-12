@@ -67,4 +67,20 @@ describe("retained project document authority", () => {
     expect(registry.get("first")).toBeUndefined()
     expect(registry.values()).toEqual([second])
   })
+
+  it("publishes which projects keep a retained session until they are released", () => {
+    const first = runtime("first")
+    const second = runtime("second")
+    const registry = createProjectRuntimeRegistry(first)
+    const snapshots: (readonly string[])[] = []
+    registry.subscribeOpenProjects(() => snapshots.push(registry.openProjectIds()))
+    expect(registry.openProjectIds()).toEqual(["first"])
+    registry.activate(second)
+    // Selecting the retained project again changes visibility, not membership.
+    registry.activate(first)
+    first.commit()
+    expect(registry.release(second)).toBe(true)
+    expect(snapshots).toEqual([["first", "second"], ["first"]])
+    expect(registry.openProjectIds()).toBe(snapshots.at(-1) as readonly string[])
+  })
 })

@@ -75,6 +75,94 @@ describe("sketch coordinate annotations", () => {
     ).toBe(0)
   })
 
+  it("keeps labels inside the canvas region left free by floating panels", () => {
+    const label = "26 mm * 1.000000000000"
+    const annotations = [
+      { id: "beside-panel", pointId: "a", anchor: { x: 650, y: 300 }, label, axis: "horizontal" },
+      { id: "under-header", pointId: "b", anchor: { x: 200, y: 20 }, label, axis: "vertical" },
+    ] as const
+    // A 300 px task panel on the right and an 80 px band on top cover part of the canvas.
+    const free = { left: 0, top: 80, right: 700, bottom: 600 }
+    const placements = layoutSketchCoordinateAnnotations(
+      annotations,
+      { width: 1000, height: 600 },
+      free,
+    )
+    const beside = placements.get("beside-panel")
+    const header = placements.get("under-header")
+    if (!beside || !header) throw new Error("Both anchors are inside the canvas.")
+    // The label flips to the free side of its point instead of sliding under the panel.
+    expect(beside.left + beside.width).toBeLessThanOrEqual(free.right - 8)
+    expect(beside.left + beside.width).toBeLessThan(650)
+    expect(beside.leaderX).toBe(beside.left + beside.width)
+    expect(header.top).toBeGreaterThanOrEqual(free.top + 12)
+    // Without a measured region the whole canvas stays available, as before.
+    expect(
+      layoutSketchCoordinateAnnotations(annotations, { width: 1000, height: 600 }).get(
+        "beside-panel",
+      )?.left,
+    ).toBe(666)
+  })
+
+  it("moves a point's coordinate pair together when the free region clips it", () => {
+    const label = "26 mm * 1.000000000000"
+    const viewport = { width: 1000, height: 600 }
+    const free = { left: 80, top: 80, right: 920, bottom: 520 }
+    const pair = (x: number, y: number) =>
+      (["horizontal", "vertical"] as const).map((axis) => ({
+        id: axis,
+        pointId: "point",
+        anchor: { x, y },
+        label,
+        axis,
+      }))
+    const boxes = (x: number, y: number, region = free) => {
+      const placements = layoutSketchCoordinateAnnotations(pair(x, y), viewport, region)
+      return (["horizontal", "vertical"] as const).map((id) => {
+        const placement = placements.get(id)
+        if (!placement) throw new Error(`The ${id} label must be placed.`)
+        return {
+          ...placement,
+          right: placement.left + placement.width,
+          upper: placement.top - 12,
+          lower: placement.top + 12,
+        }
+      })
+    }
+    const expectSeparatedInside = (
+      [first, second]: ReturnType<typeof boxes>,
+      region: typeof free,
+    ) => {
+      if (!first || !second) throw new Error("Both labels must be placed.")
+      for (const box of [first, second]) {
+        expect(box.left).toBeGreaterThanOrEqual(region.left)
+        expect(box.right).toBeLessThanOrEqual(region.right)
+        expect(box.upper).toBeGreaterThanOrEqual(region.top)
+        expect(box.lower).toBeLessThanOrEqual(region.bottom)
+      }
+      const overlap =
+        first.left < second.right &&
+        second.left < first.right &&
+        first.upper < second.lower &&
+        second.upper < first.lower
+      expect(overlap).toBe(false)
+    }
+
+    // The point is panned under the top chrome: both labels used to clamp to top 92.
+    const [horizontal, vertical] = boxes(200, 20)
+    expectSeparatedInside([horizontal, vertical] as ReturnType<typeof boxes>, free)
+    // The pair keeps the 36 px separation it has without a region (38 and 74).
+    expect((vertical?.top ?? 0) - (horizontal?.top ?? 0)).toBe(36)
+    expect(horizontal?.top).toBe(92)
+    // Mirrored at the bottom edge, and beside the left and right edges.
+    expectSeparatedInside(boxes(200, 580), free)
+    expectSeparatedInside(boxes(20, 300), free)
+    expectSeparatedInside(boxes(980, 300), free)
+    // A region too short for the stacked pair separates the labels side by side instead.
+    const short = { left: 80, top: 80, right: 920, bottom: 110 }
+    expectSeparatedInside(boxes(500, 95, short), short)
+  })
+
   it("does not attempt pixel placement before the viewport has a size", () => {
     expect(
       layoutSketchCoordinateAnnotations(

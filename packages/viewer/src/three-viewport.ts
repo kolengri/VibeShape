@@ -34,7 +34,10 @@ import {
   WebGLRenderer,
 } from "three"
 import { OrbitControls } from "three/addons/controls/OrbitControls.js"
-import { TransformControls } from "three/addons/controls/TransformControls.js"
+import {
+  TransformControls,
+  type TransformControlsGizmo,
+} from "three/addons/controls/TransformControls.js"
 import { LineMaterial } from "three/addons/lines/LineMaterial.js"
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js"
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js"
@@ -3710,9 +3713,37 @@ class ThreeGeometryViewport implements GeometryViewport {
         .getWorldPosition(new Vector3())
         .project(this.#camera)
       this.#canvas.dataset.translationGizmoOrigin = `${((projected.x + 1) / 2) * width},${((1 - projected.y) / 2) * height}`
+      this.#canvas.dataset.translationGizmoPlanes = this.#translationPlaneHandles(width, height)
     } else {
       delete this.#canvas.dataset.translationGizmoOrigin
+      delete this.#canvas.dataset.translationGizmoPlanes
     }
+  }
+
+  /** Projected plane-handle centers (`xy:x,y;…`); a handle hidden edge-on is omitted. */
+  #translationPlaneHandles(width: number, height: number) {
+    // The helper places and scales its handles for the current camera when its matrices update.
+    this.#translationHelper.updateMatrixWorld(true)
+    const gizmo = this.#translationHelper.children.find(
+      (child): child is TransformControlsGizmo => "isTransformControlsGizmo" in child,
+    )
+    const handles = gizmo?.picker.translate
+    if (!handles) return ""
+    return (["XY", "YZ", "XZ"] as const)
+      .flatMap((name) => {
+        const handle = handles.getObjectByName(name)
+        if (!(handle instanceof Mesh) || handle.scale.x < 1e-6) return []
+        if (!handle.geometry.boundingBox) handle.geometry.computeBoundingBox()
+        const center = handle.geometry.boundingBox
+          ?.getCenter(new Vector3())
+          .applyMatrix4(handle.matrixWorld)
+          .project(this.#camera)
+        if (!center) return []
+        return [
+          `${name.toLowerCase()}:${((center.x + 1) / 2) * width},${((1 - center.y) / 2) * height}`,
+        ]
+      })
+      .join(";")
   }
 
   #applySectionClipping() {

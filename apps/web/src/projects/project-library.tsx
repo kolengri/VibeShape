@@ -7,9 +7,13 @@ import { Skeleton } from "@vibeshape/ui/components/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { useId } from "react"
-import { type DocumentControllerState, deleteLocalProject } from "../document/document-controller"
+import {
+  type DocumentControllerState,
+  deleteLocalProject,
+  useOpenProjectIds,
+} from "../document/document-controller"
 import { DocumentRenameDialog } from "../document/document-rename-dialog"
-import { ProjectDeleteAction } from "../document/project-delete-action"
+import { ProjectDeleteAction, type ProjectDeleteBlock } from "../document/project-delete-action"
 
 export type ProjectLibraryState =
   | { status: "loading"; projects: readonly LocalProjectSummary[] }
@@ -74,6 +78,7 @@ function ProjectPreview({ project }: { project: LocalProjectSummary }) {
 
 type LocalProjectListProps = {
   activeDocumentId: string | undefined
+  openDocumentIds: readonly string[]
   controller: DocumentControllerState
   disabled: boolean
   duplicatingDocumentId: string | null
@@ -91,6 +96,25 @@ type LocalProjectListProps = {
   switchingDocumentId: string | null
 }
 
+function projectDeleteBlock(
+  project: LocalProjectSummary,
+  activeDocumentId: string | undefined,
+  openDocumentIds: readonly string[],
+): ProjectDeleteBlock {
+  if (project.documentId === activeDocumentId) return "current"
+  return openDocumentIds.includes(project.documentId) ? "open" : null
+}
+
+function ProjectDeleteBlockedNote({ block, id }: { block: ProjectDeleteBlock; id: string }) {
+  const t = useTranslations("app.projectFile.library.delete")
+  if (!block) return null
+  return (
+    <span id={id} className="text-xs text-muted-foreground">
+      {t(block === "current" ? "currentBlocked" : "openBlocked")}
+    </span>
+  )
+}
+
 function LocalProjectCard({
   project,
   activeDocumentId,
@@ -104,10 +128,13 @@ function LocalProjectCard({
   onPendingDeleteChange,
   onRenamed,
   switchingDocumentId,
+  openDocumentIds,
 }: Omit<LocalProjectListProps, "projects" | "onCreate"> & { project: LocalProjectSummary }) {
   const t = useTranslations("app.projectFile.library")
   const formatter = useFormatter()
+  const blockedDescriptionId = useId()
   const isCurrent = project.documentId === activeDocumentId
+  const deleteBlock = projectDeleteBlock(project, activeDocumentId, openDocumentIds)
   const currentBadge = isCurrent ? (
     <span className="rounded-sm bg-secondary px-1.5 py-0.5 text-[11px] font-medium text-secondary-foreground">
       {t("current")}
@@ -144,15 +171,15 @@ function LocalProjectCard({
               {formatter.dateTime(new Date(project.updatedAt), "shortTime")}
             </time>
           </span>
-          {isCurrent ? (
-            <span className="text-xs text-muted-foreground">{t("delete.currentBlocked")}</span>
-          ) : null}
+          <ProjectDeleteBlockedNote block={deleteBlock} id={blockedDescriptionId} />
         </span>
       </Button>
       <div className="absolute right-3 bottom-3">
         <ProjectCardActions
           project={project}
           isCurrent={isCurrent}
+          deleteBlock={deleteBlock}
+          blockedDescriptionId={blockedDescriptionId}
           controller={controller}
           disabled={disabled}
           duplicatingDocumentId={duplicatingDocumentId}
@@ -170,6 +197,8 @@ function LocalProjectCard({
 function ProjectCardActions({
   project,
   isCurrent,
+  deleteBlock,
+  blockedDescriptionId,
   controller,
   disabled,
   duplicatingDocumentId,
@@ -191,6 +220,8 @@ function ProjectCardActions({
 > & {
   project: LocalProjectSummary
   isCurrent: boolean
+  deleteBlock: ProjectDeleteBlock
+  blockedDescriptionId: string
 }) {
   const t = useTranslations("app.projectFile.library")
   return (
@@ -219,8 +250,9 @@ function ProjectCardActions({
       </Tooltip>
       <ProjectDeleteAction
         iconOnly
+        blocked={deleteBlock}
+        blockedDescriptionId={blockedDescriptionId}
         disabled={disabled}
-        isCurrent={isCurrent}
         onDelete={onDelete}
         onDeleted={onDeleted}
         onPendingChange={onPendingDeleteChange}
@@ -242,6 +274,7 @@ function LocalProjectList({
   onOpen,
   onPendingDeleteChange,
   onRenamed,
+  openDocumentIds,
   projects,
   switchingDocumentId,
 }: LocalProjectListProps) {
@@ -286,6 +319,7 @@ function LocalProjectList({
               onOpen={onOpen}
               onPendingDeleteChange={onPendingDeleteChange}
               onRenamed={onRenamed}
+              openDocumentIds={openDocumentIds}
               switchingDocumentId={switchingDocumentId}
             />
           ))}
@@ -325,6 +359,7 @@ export function ProjectLibrary({
   switchingDocumentId: string | null
 }) {
   const t = useTranslations("app.projectFile.library")
+  const openDocumentIds = useOpenProjectIds()
 
   if (library.status === "loading") {
     return (
@@ -380,6 +415,7 @@ export function ProjectLibrary({
       onOpen={onOpen}
       onPendingDeleteChange={onPendingDeleteChange}
       onRenamed={onRenamed}
+      openDocumentIds={openDocumentIds}
       projects={library.projects}
       switchingDocumentId={switchingDocumentId}
     />

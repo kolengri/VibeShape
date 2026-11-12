@@ -59,7 +59,8 @@ export function currentAuthoredParts(
   return parts
 }
 
-function authoredHistoryRepairKeys(
+/** History item keys (`kind:id`) whose authored recipe waits for replacement inputs. */
+export function authoredHistoryRepairKeys(
   authority: AuthoredDocumentSnapshot | null,
 ): ReadonlySet<string> {
   return new Set(
