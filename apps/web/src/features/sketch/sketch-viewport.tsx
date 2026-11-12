@@ -3930,7 +3930,12 @@ function constraintGlyphClassName(
   pointerEventsClass: string,
   selected: boolean,
 ) {
-  const variant = buttonVariants({ size: "xs", variant: selected ? "secondary" : "ghost" })
+  // Annotations are positioned with left/top; animating them would make a dragged label trail
+  // the pointer and settle after release, so only colors transition.
+  const variant = cn(
+    buttonVariants({ size: "xs", variant: selected ? "secondary" : "ghost" }),
+    "transition-colors",
+  )
   if (glyph.dimensional) {
     return cn(
       variant,
