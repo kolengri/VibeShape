@@ -69,13 +69,17 @@ function replacementTaskContext(controller: DocumentControllerState, feature: Fe
   }
 }
 
-export function HistoryFeatureRepair({ controller, tool, onClose, renderDelete, children }: Props) {
-  const t = useTranslations("app.historyFeatureRepair")
-  const [selectedBodyId, setSelectedBodyId] = useState("")
-  const selectId = useId()
-  // Both derivations parse and spread fresh records. Children key effects and memoized evidence
-  // on report identity, so a new object on every render would re-run them in a loop.
-  const featureId = tool && "featureId" in tool ? tool.featureId : undefined
+/**
+ * Derives the retained repair task, its form context, the body choices and the chosen replacement.
+ * Each derivation parses and spreads fresh records, while children key effects and memoized evidence
+ * on report identity, so every value is memoized on its real inputs to avoid an update loop.
+ */
+function useRetainedBodyRepair(
+  controller: DocumentControllerState,
+  featureId: FeatureId | undefined,
+  selectedBodyId: string,
+  unnamedBody: string,
+) {
   const task = useMemo(
     () => retainedFeatureBodyTask(controller, featureId),
     [controller, featureId],
@@ -95,7 +99,7 @@ export function HistoryFeatureRepair({ controller, tool, onClose, renderDelete, 
     report?.rebuild,
     task?.feature.id,
     parts,
-    t("unnamedBody"),
+    unnamedBody,
     undefined,
     hasRepairTask,
   )
@@ -114,6 +118,20 @@ export function HistoryFeatureRepair({ controller, tool, onClose, renderDelete, 
       ? { replacement, controller: replacementTaskContext(formController, replacement.feature) }
       : null
   }, [formController, selectedBody, task])
+  return { task, formController, options, selectedId: selected?.id ?? "", repair }
+}
+
+export function HistoryFeatureRepair({ controller, tool, onClose, renderDelete, children }: Props) {
+  const t = useTranslations("app.historyFeatureRepair")
+  const [selectedBodyId, setSelectedBodyId] = useState("")
+  const selectId = useId()
+  const { task, formController, options, selectedId, repair } = useRetainedBodyRepair(
+    controller,
+    tool && "featureId" in tool ? tool.featureId : undefined,
+    selectedBodyId,
+    t("unnamedBody"),
+  )
+  const report = controller.report
   if (!task || !report) return children(formController)
   const { feature } = task
   const replacement = repair?.replacement ?? null
@@ -123,7 +141,7 @@ export function HistoryFeatureRepair({ controller, tool, onClose, renderDelete, 
       t={t}
       selectId={selectId}
       options={options}
-      selectedId={selected?.id ?? ""}
+      selectedId={selectedId}
       disabled={
         controller.status !== "ready" ||
         controller.saveStatus === "saving" ||
