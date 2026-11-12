@@ -641,6 +641,46 @@ describe("feature rebuild coordination", () => {
     ])
   })
 
+  it("re-evaluates a blocked result whose blocker left a scoped graph", async () => {
+    const hash = contentHasher()
+    const failingBox = vi.fn<FeatureGeometryEvaluationPort>(async (request) =>
+      request.featureId === featureIds.box
+        ? { ok: false, diagnosticCode: "invalid-feature-geometry" }
+        : { ok: true, geometry: geometry() },
+    )
+    const initial = await rebuildFeatureGraph(
+      rebuildInput(
+        graph([boolean(), box(featureIds.box), cylinder(), box(featureIds.independent, 12)]),
+        hash,
+        failingBox,
+      ),
+    )
+    expect(initial.ok).toBe(true)
+    if (!initial.ok) return
+    expect(recordById(initial.evaluation.records, featureIds.boolean)?.status).toBe("blocked")
+
+    // A preview repairs the boolean's inputs and scopes the graph to them, pruning the blocker.
+    const repaired = { ...boolean(), dependencies: [featureIds.independent, featureIds.cylinder] }
+    const requests: FeatureGeometryEvaluationRequest[] = []
+    const result = await rebuildFeatureGraph({
+      ...rebuildInput(
+        graph([repaired, cylinder(), box(featureIds.independent, 12)]),
+        hash,
+        successfulPort(requests),
+      ),
+      previous: initial,
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(requests.map(({ featureId }) => featureId)).toEqual([featureIds.boolean])
+    expect(recordById(result.evaluation.records, featureIds.boolean)?.status).toBe("succeeded")
+    expect(result.evaluation.reusedFeatureIds).toEqual([
+      featureIds.cylinder,
+      featureIds.independent,
+    ])
+  })
+
   it("fails closed when previous geometry does not match successful cached results", async () => {
     const featureGraph = graph([box(featureIds.box)])
     const hash = contentHasher()
