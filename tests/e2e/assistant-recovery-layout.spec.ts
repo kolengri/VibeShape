@@ -1,3 +1,4 @@
+import type { Locator } from "@playwright/test"
 import type {
   AssistantBridge,
   AssistantEvent,
@@ -5,6 +6,27 @@ import type {
 } from "../../packages/automation-api/src/assistant"
 import { expect, test } from "./fixtures"
 import { routeNativeProjectAccess } from "./native-project-access-support"
+
+type HitTestElement = {
+  contains(other: unknown): boolean
+  getBoundingClientRect(): { left: number; top: number; right: number; bottom: number }
+  ownerDocument: { elementFromPoint(x: number, y: number): unknown }
+}
+
+/** Corners (inset 2 px) of the control that another layer covers. */
+function coveredRetryCorners(control: Locator) {
+  return control.evaluate((element) => {
+    const button = element as unknown as HitTestElement
+    const box = button.getBoundingClientRect()
+    const corners = [
+      [box.left + 2, box.top + 2],
+      [box.right - 2, box.top + 2],
+      [box.left + 2, box.bottom - 2],
+      [box.right - 2, box.bottom - 2],
+    ] as const
+    return corners.filter(([x, y]) => !button.contains(button.ownerDocument.elementFromPoint(x, y)))
+  })
+}
 
 test("keeps recovery copy and retry in the session tray below message actions in compact chat", async ({
   page,
@@ -118,6 +140,8 @@ test("keeps recovery copy and retry in the session tray below message actions in
         expect(sendBounds.y + sendBounds.height).toBeLessThanOrEqual(retryBounds.y)
         expect(retryBounds.x + retryBounds.width).toBeLessThanOrEqual(bounds.x + bounds.width)
         await expect(retry).toBeInViewport({ ratio: 1 })
+        // toBeInViewport ignores covering layers; the agent-exited notification is still shown.
+        expect(await coveredRetryCorners(retry)).toEqual([])
         await expect(send).toBeInViewport({ ratio: 1 })
         await page.screenshot({
           path: test.info().outputPath(`recovery-${width}-${theme}-${zoom}.png`),
