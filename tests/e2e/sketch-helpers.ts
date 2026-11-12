@@ -123,6 +123,23 @@ export async function selectIdleOriginPlaneInViewport(page: Page, plane: "xy" | 
   throw new Error(`The ${plane.toUpperCase()} origin plane was not pickable while idle.`)
 }
 
+/** Maps sketch coordinates to the screen through the drawing's real plane projection. */
+export async function sketchScreenPoint(drawing: Locator, x: number, y: number) {
+  return drawing.locator("[data-sketch-plane-projection]").evaluate(
+    (element, point) => {
+      type ScreenMatrix = { a: number; b: number; c: number; d: number; e: number; f: number }
+      const geometry = element as unknown as { getScreenCTM?: () => ScreenMatrix | null }
+      const matrix = geometry.getScreenCTM?.()
+      if (!matrix) throw new Error("The sketch must expose its real drawing projection.")
+      return {
+        x: matrix.a * point.x - matrix.c * point.y + matrix.e,
+        y: matrix.b * point.x - matrix.d * point.y + matrix.f,
+      }
+    },
+    { x, y },
+  )
+}
+
 export async function unobscuredDrawingBounds(page: Page, drawing: Locator) {
   await page.evaluate("new Promise((resolve) => requestAnimationFrame(() => resolve()))")
   const bounds = await drawing.evaluate((element) => {
