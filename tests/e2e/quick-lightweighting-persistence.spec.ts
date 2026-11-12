@@ -1,3 +1,4 @@
+import { saved } from "./authored-parts-ui-support"
 import { expect, test } from "./fixtures"
 import { invokeModelCommand } from "./model-command-support"
 
@@ -30,6 +31,9 @@ for (const hidden of [false, true]) {
     })
     await expect(result).toBeVisible()
     await page.reload()
+    // Progressive opening lists the Parts before it has rebuilt the reopened organic mesh; the
+    // save status leaves "Opening local document…" only once that rebuild settles (~5 s here).
+    await saved(page)
     await expect(source).toBeVisible()
     await expect(result).toBeVisible()
     await expect(page.getByRole("status", { name: "Project save status", exact: true })).toHaveText(
