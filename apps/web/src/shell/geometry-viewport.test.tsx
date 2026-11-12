@@ -1996,9 +1996,9 @@ describe("GeometryViewport", () => {
       undefined,
       { frame, mode: "orbit", projectionStore: store },
     )
-    await waitFor(() =>
-      expect(port.setSketchNavigationElement).toHaveBeenLastCalledWith(navigationElement),
-    )
+    // Compare identities: a failing DOM-node matcher makes Bun format the element and stall.
+    const boundElement = () => vi.mocked(port.setSketchNavigationElement).mock.lastCall?.[0]
+    await waitFor(() => expect(boundElement() === navigationElement).toBe(true))
 
     // Intersection hands the pointer to the 3D broker; middle and secondary drag stay usable.
     rerenderSketchContext({
@@ -2007,22 +2007,20 @@ describe("GeometryViewport", () => {
       projectionStore: store,
       faceIntersectionSelection: { onSelect: vi.fn() },
     })
-    expect(port.setSketchNavigationElement).toHaveBeenLastCalledWith(null)
+    expect(boundElement() === null).toBe(true)
     // A drawing remount while the broker owns the pointer does not rebind navigation to it.
     act(() => store.getState().setNavigationElement(document.createElement("div")))
-    expect(port.setSketchNavigationElement).toHaveBeenLastCalledWith(null)
+    expect(boundElement() === null).toBe(true)
     rerenderSketchContext({
       frame,
       mode: "orbit",
       projectionStore: store,
       referenceSelection: { candidates: [], onSelect: vi.fn() },
     })
-    expect(port.setSketchNavigationElement).toHaveBeenLastCalledWith(null)
+    expect(boundElement() === null).toBe(true)
 
     rerenderSketchContext({ frame, mode: "orbit", projectionStore: store })
-    expect(port.setSketchNavigationElement).toHaveBeenLastCalledWith(
-      store.getState().navigationElement,
-    )
+    expect(boundElement() === store.getState().navigationElement).toBe(true)
   })
 
   it("routes graphical sketch-reference hover and selection through the persistent 3D viewer", async () => {
