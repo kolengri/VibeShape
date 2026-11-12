@@ -801,6 +801,26 @@ const sketchSupportRepairLabels = {
   ambiguous: "repairAmbiguousSketchSupport",
 } as const
 
+/** Names the repair a sketch row offers, or null when the row needs none. */
+function sketchRepairCue(
+  referenceHealth: HistoryViewRow["referenceHealth"],
+  supportHealth: HistoryViewRow["supportHealth"],
+  repairRequired: boolean,
+  label: string,
+  t: ReturnType<typeof useTranslations>,
+) {
+  const supportStatus = supportHealth?.status
+  if (supportStatus === "missing" || supportStatus === "ambiguous")
+    return { support: true, label: t(sketchSupportRepairLabels[supportStatus], { sketch: label }) }
+  const count = brokenReferenceCount(referenceHealth)
+  if (count > 0)
+    return { support: false, label: t("repairBrokenSketchReferences", { sketch: label, count }) }
+  // A retained repair intent has no broken live reference to count; opening the sketch repairs it.
+  return repairRequired
+    ? { support: false, label: t("repairSketchIntent", { sketch: label }) }
+    : null
+}
+
 function BrokenSketchReferenceAction({
   referenceHealth,
   supportHealth,
@@ -819,15 +839,8 @@ function BrokenSketchReferenceAction({
   t: ReturnType<typeof useTranslations>
 }) {
   const { detailed } = useContext(HistoryPresentation)
-  const supportBroken = supportHealth?.status === "missing" || supportHealth?.status === "ambiguous"
-  const count = brokenReferenceCount(referenceHealth) + (supportBroken ? 1 : 0)
-  if ((count === 0 && !repairRequired) || !detailed) return null
-  // A retained repair intent has no broken live reference to count; opening the sketch repairs it.
-  const repairLabel = supportBroken
-    ? t(sketchSupportRepairLabels[supportHealth.status], { sketch: label })
-    : count === 0
-      ? t("repairSketchIntent", { sketch: label })
-      : t("repairBrokenSketchReferences", { sketch: label, count })
+  const cue = sketchRepairCue(referenceHealth, supportHealth, repairRequired, label, t)
+  if (!cue || !detailed) return null
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -836,13 +849,13 @@ function BrokenSketchReferenceAction({
           variant="ghost"
           size="icon-xs"
           className="text-destructive hover:text-destructive"
-          aria-label={repairLabel}
-          onClick={supportBroken ? onSupportRepair : onActivate}
+          aria-label={cue.label}
+          onClick={cue.support ? onSupportRepair : onActivate}
         >
           <CircleAlert aria-hidden="true" />
         </Button>
       </TooltipTrigger>
-      <TooltipContent>{repairLabel}</TooltipContent>
+      <TooltipContent>{cue.label}</TooltipContent>
     </Tooltip>
   )
 }

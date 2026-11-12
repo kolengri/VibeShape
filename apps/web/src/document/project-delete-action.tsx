@@ -21,6 +21,54 @@ import type { ProjectDeleteResult } from "./document-controller"
 /** Why Delete is unavailable: the visible project, or one whose session this window retains. */
 export type ProjectDeleteBlock = "current" | "open" | null
 
+const blockedTooltipKeys = {
+  current: "currentBlocked",
+  open: "openBlocked",
+} as const
+
+/** A session retained by this window is not "another tab"; name the actual owner. */
+function deleteFailure(result: ProjectDeleteResult) {
+  return !result.ok && result.diagnostic.code === "project-open" ? "openBlocked" : "failed"
+}
+
+function ProjectDeleteTrigger({
+  blocked,
+  blockedDescriptionId,
+  disabled,
+  iconOnly,
+  project,
+}: {
+  blocked: ProjectDeleteBlock
+  blockedDescriptionId: string | undefined
+  disabled: boolean
+  iconOnly: boolean
+  project: LocalProjectSummary
+}) {
+  const t = useTranslations("app.projectFile.library.delete")
+  const trigger = (
+    <AlertDialogTrigger asChild>
+      <Button
+        type="button"
+        size={iconOnly ? "icon-sm" : "sm"}
+        variant={iconOnly ? "ghost" : "outline"}
+        className="text-destructive hover:text-destructive"
+        disabled={disabled || blocked !== null}
+        aria-describedby={blocked === null ? undefined : blockedDescriptionId}
+        aria-label={t("actionLabel", { name: project.name, revision: project.headRevision })}
+      >
+        {iconOnly ? <Trash2 aria-hidden="true" /> : t("action")}
+      </Button>
+    </AlertDialogTrigger>
+  )
+  if (!iconOnly) return trigger
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+      <TooltipContent>{t(blocked ? blockedTooltipKeys[blocked] : "action")}</TooltipContent>
+    </Tooltip>
+  )
+}
+
 export function ProjectDeleteAction({
   blocked,
   blockedDescriptionId,
@@ -58,8 +106,7 @@ export function ProjectDeleteAction({
     try {
       const result = await onDelete(project.documentId, project.headRevision)
       if (!result.ok) {
-        // A session retained by this window is not "another tab"; name the actual owner.
-        setFailure(result.diagnostic.code === "project-open" ? "openBlocked" : "failed")
+        setFailure(deleteFailure(result))
         return
       }
       await onDeleted()
@@ -72,41 +119,15 @@ export function ProjectDeleteAction({
     }
   }
 
-  const trigger = (
-    <Button
-      type="button"
-      size={iconOnly ? "icon-sm" : "sm"}
-      variant={iconOnly ? "ghost" : "outline"}
-      className="text-destructive hover:text-destructive"
-      disabled={disabled || blocked !== null}
-      aria-describedby={blocked === null ? undefined : blockedDescriptionId}
-      aria-label={t("actionLabel", {
-        name: project.name,
-        revision: project.headRevision,
-      })}
-    >
-      {iconOnly ? <Trash2 aria-hidden="true" /> : t("action")}
-    </Button>
-  )
-
   return (
     <AlertDialog open={open} onOpenChange={changeOpen}>
-      {iconOnly ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
-          </TooltipTrigger>
-          <TooltipContent>
-            {blocked === "current"
-              ? t("currentBlocked")
-              : blocked === "open"
-                ? t("openBlocked")
-                : t("action")}
-          </TooltipContent>
-        </Tooltip>
-      ) : (
-        <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
-      )}
+      <ProjectDeleteTrigger
+        blocked={blocked}
+        blockedDescriptionId={blockedDescriptionId}
+        disabled={disabled}
+        iconOnly={iconOnly}
+        project={project}
+      />
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{t("title", { name: project.name })}</AlertDialogTitle>

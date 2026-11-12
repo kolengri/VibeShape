@@ -103,8 +103,7 @@ test("keeps recovery copy and retry in the session tray below message actions in
         await page.setViewportSize({ width: width / zoom, height: 900 / zoom })
         // The viewport grid re-measures in an animation frame; read every box from that layout.
         await page.evaluate(
-          () =>
-            new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+          "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
         )
         const bounds = await composer.boundingBox()
         const copyBounds = await status.boundingBox()

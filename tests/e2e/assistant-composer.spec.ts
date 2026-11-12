@@ -837,7 +837,11 @@ test("compares and atomically undoes a connected assistant turn spanning saved s
   const readingPosition = await log.evaluate(async (node) => {
     node.style.flex = "0 0 180px"
     node.style.height = "180px"
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    const view = node.ownerDocument.defaultView
+    if (!view) throw new Error("The chat log must belong to a browser window.")
+    await new Promise((resolve) =>
+      view.requestAnimationFrame(() => view.requestAnimationFrame(resolve)),
+    )
     node.scrollTop = node.scrollHeight - node.clientHeight - 96
     node.dispatchEvent(new Event("scroll"))
     return node.scrollTop
