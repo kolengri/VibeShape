@@ -80,25 +80,30 @@ export type FilletV3Copy = Readonly<{
 type LengthParser = (
   raw: string,
 ) => { ok: true; quantity: LengthQuantity } | { ok: false; message: string }
+/** Which part of one edge's law is invalid; `edge` covers the law as a whole. */
+export type VariableRadiusIssue = Readonly<{
+  field: "startRadius" | "endRadius" | "edge"
+  message: string
+}>
 type FilletV3Result =
   | { ok: true; parameters: FilletFeatureParametersV3 }
   | { ok: false; issues: TreatmentIssues }
 
 function variableRadius(
   draft: FilletVariableRadiusDraft,
-  edge: BodyTopoRef,
+  edge: EdgeTopoRef | BodyTopoRef,
   parse: LengthParser,
   copy: FilletV3Copy,
 ) {
+  const fail = (field: VariableRadiusIssue["field"], message: string) =>
+    ({ ok: false, issue: { field, message } }) as const
   // Closed edges have no endpoints, so their direction cannot be defined deterministically.
-  if (edge.signature.boundaryCount !== 2)
-    return { ok: false as const, message: copy.variableRadiusClosed }
+  if (edge.signature.boundaryCount !== 2) return fail("edge", copy.variableRadiusClosed)
   const start = parse(draft.startRadius)
-  if (!start.ok) return start
+  if (!start.ok) return fail("startRadius", start.message)
   const end = parse(draft.endRadius)
-  if (!end.ok) return end
-  if (start.quantity.value === end.quantity.value)
-    return { ok: false as const, message: copy.variableRadiusEqual }
+  if (!end.ok) return fail("endRadius", end.message)
+  if (start.quantity.value === end.quantity.value) return fail("edge", copy.variableRadiusEqual)
   return {
     ok: true as const,
     law: { startRadius: start.quantity, endRadius: end.quantity, reverse: draft.reverse },
@@ -126,7 +131,7 @@ export function filletV3Parameters(
       continue
     }
     const law = variableRadius(draft, target.edge, parse, copy)
-    if (!law.ok) return { ok: false, issues: { variableRadii: law.message } }
+    if (!law.ok) return { ok: false, issues: { variableRadii: law.issue.message } }
     targets.push({ kind: "edge", edge: target.edge, variableRadius: law.law })
   }
   const parsed = filletFeatureParametersV3Schema.safeParse({
@@ -137,6 +142,18 @@ export function filletV3Parameters(
   return parsed.success
     ? { ok: true, parameters: parsed.data }
     : { ok: false, issues: { references: copy.validationSummary } }
+}
+
+/** The first invalid part of one row's law, shown under that row; null when it is valid or off. */
+export function variableRadiusIssue(
+  values: TreatmentValues,
+  edge: EdgeTopoRef | BodyTopoRef,
+  parse: LengthParser,
+  copy: FilletV3Copy,
+): VariableRadiusIssue | null {
+  const draft = variableRadiusFor(values, edge)
+  const law = draft ? variableRadius(draft, edge, parse, copy) : null
+  return law && !law.ok ? law.issue : null
 }
 
 /** Saved V3 laws become editable drafts; constant targets stay plain edge targets. */

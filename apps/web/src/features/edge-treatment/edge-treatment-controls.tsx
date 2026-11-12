@@ -5,6 +5,7 @@ import { FieldError } from "@vibeshape/ui/components/field"
 import { FieldHelp } from "@vibeshape/ui/components/field-help"
 import { Scan } from "@vibeshape/ui/components/icons"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
+import { cn } from "@vibeshape/ui/lib/cn"
 import type { ComponentProps } from "react"
 import { useId, useMemo, useRef, useState } from "react"
 import { exactBodyPickCandidates } from "../part-design/body-reference-picking"
@@ -17,8 +18,9 @@ import {
   type PreparedTreatmentReferenceResolution,
   prepareTreatmentReferenceResolution,
   sameTreatmentReference,
+  treatmentReferenceKey,
 } from "./edge-treatment-candidates"
-import { withoutVariableRadius } from "./edge-treatment-fillet"
+import { type VariableRadiusIssue, withoutVariableRadius } from "./edge-treatment-fillet"
 import {
   FilletEdgeRadiusDetails,
   FilletEdgeRadiusToggle,
@@ -51,6 +53,10 @@ export type TreatmentControlsProps = {
   onPick: (candidate: EdgeTreatmentCandidate, pick: EdgeTreatmentPick) => void
   /** Fillet only: suggested end radius when a variable radius is enabled. */
   defaultEndRadius?: string
+  /** Fillet only: the row's law issue, available once validation reported one. */
+  variableRadiusIssue?:
+    | ((reference: ReturnType<typeof treatmentReferences>[number]) => VariableRadiusIssue | null)
+    | undefined
 }
 
 type PreparedTreatmentControlsProps = TreatmentControlsProps & {
@@ -132,6 +138,9 @@ function CandidateFallback({ props }: { props: PreparedTreatmentControlsProps })
   const t = useTranslations("app.shell.taskPanel.edgeTreatment")
   const [page, setPage] = useState(0)
   const [open, setOpen] = useState(false)
+  // Once keyboard focus reveals the disclosure it stays in the layout for this pick. Hiding it
+  // again on focus-out would shift the list under a pointer that is already pressing a row.
+  const [revealed, setRevealed] = useState(false)
   const intent = props.pick?.kind
   const face = intent === "faces" || intent === "side-face"
   const restricted = intent === "side-face" || intent === "overrides"
@@ -144,7 +153,11 @@ function CandidateFallback({ props }: { props: PreparedTreatmentControlsProps })
   const currentPage = Math.min(page, lastPage)
   return (
     <details
-      className="sr-only rounded-md border p-2 open:not-sr-only focus-within:not-sr-only"
+      className={cn(
+        "rounded-md border p-2",
+        revealed ? "not-sr-only" : "sr-only open:not-sr-only focus-within:not-sr-only",
+      )}
+      onFocus={() => setRevealed(true)}
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary className="font-medium cursor-pointer text-xs">{t("keyboardChoices")}</summary>
@@ -332,6 +345,7 @@ function filletRadiusProps({ props, index, label, candidate, reference }: Select
     defaultEndRadius: props.defaultEndRadius ?? props.values.distance,
     expressionDescription: props.copy.expressionDescription,
     suggestions: props.suggestions,
+    issue: props.variableRadiusIssue?.(reference) ?? null,
   }
 }
 
@@ -476,14 +490,22 @@ function SelectedTargets({ props }: { props: PreparedTreatmentControlsProps }) {
       {references.length > 0 && (
         <SelectedTargetList>
           {references.map((reference, index) => (
-            <SelectedRow key={JSON.stringify(reference)} props={props} index={index} v3={v3} />
+            <SelectedRow
+              key={treatmentReferenceKey(reference)}
+              props={props}
+              index={index}
+              v3={v3}
+            />
           ))}
         </SelectedTargetList>
       )}
       {props.issues.references && <FieldError>{props.issues.references}</FieldError>}
-      {props.operation === "fillet" && props.issues.variableRadii && (
-        <FieldError>{props.issues.variableRadii}</FieldError>
-      )}
+      {/* Rows show their own law issue; keep the summary only when no listed row can. */}
+      {props.operation === "fillet" &&
+        props.issues.variableRadii &&
+        !references.some((reference) => props.variableRadiusIssue?.(reference)) && (
+          <FieldError>{props.issues.variableRadii}</FieldError>
+        )}
     </fieldset>
   )
 }

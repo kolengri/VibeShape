@@ -36,6 +36,7 @@ import {
   type TreatmentValues,
   treatmentFeature,
   treatmentUsesV3,
+  treatmentVariableRadiusIssue,
 } from "./edge-treatment-model"
 import { type EdgeTreatmentTargetOption, edgeTreatmentOptionOwner } from "./edge-treatment-options"
 import {
@@ -252,6 +253,7 @@ function useTreatmentFields(
   }
   return {
     candidates,
+    context,
     parsed,
     pick,
     pickIssue,
@@ -348,6 +350,12 @@ function TreatmentFields({
         operation={props.operation}
         copy={props.copy}
         issues={issues}
+        // Once the group reports a law issue, each row names its own failing field.
+        variableRadiusIssue={
+          submitIssues.variableRadii
+            ? (reference) => treatmentVariableRadiusIssue(values, reference, fields.context)
+            : undefined
+        }
         disabled={Boolean(props.disabled)}
         suggestions={state.suggestions}
         pick={fields.pick}

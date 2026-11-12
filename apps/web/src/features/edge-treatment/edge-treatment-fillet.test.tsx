@@ -343,3 +343,54 @@ it("lists four selected edges as compact rows and expands Variable radius only w
   ).toBeTruthy()
   expect(screen.getAllByRole("combobox", { name: /^Start radius for/ })).toHaveLength(1)
 })
+
+function twoEdgeBody() {
+  return [option(sourceId, "result", "Body A", [candidate("edge", 1), candidate("edge", 2)])]
+}
+
+it("keeps focus on the toggled row when the first Variable radius switches Fillet to V3", async () => {
+  const options = twoEdgeBody()
+  setup({ options, topologyCandidates: geometry(options) })
+  for (const n of [1, 2]) await pick(`Body A · Edge ${n}`)
+  const toggle = screen.getByRole("checkbox", { name: "Variable radius for Edge 2" })
+  await userEvent.click(toggle)
+  // The V2 legacy reference is promoted to a body-bound V3 target; the row must not remount.
+  expect(screen.getByRole("combobox", { name: "Start radius for Edge 2" })).toBeTruthy()
+  expect(screen.getByRole("checkbox", { name: "Variable radius for Edge 2" })).toBe(toggle)
+  expect(document.activeElement).toBe(toggle)
+  expect((toggle as HTMLInputElement).checked).toBe(true)
+})
+
+it("shows each Variable radius issue under the row that owns it", async () => {
+  const options = twoEdgeBody()
+  const { onSave } = setup({ options, topologyCandidates: geometry(options) })
+  for (const n of [1, 2]) await pick(`Body A · Edge ${n}`)
+  for (const n of [1, 2])
+    await userEvent.click(screen.getByRole("checkbox", { name: `Variable radius for Edge ${n}` }))
+  const end = screen.getByRole("combobox", { name: "End radius for Edge 2" })
+  await userEvent.clear(end)
+  await userEvent.type(end, "1 mm")
+  await submit()
+  expect(onSave).not.toHaveBeenCalled()
+  const [first, second] = within(screen.getByRole("list")).getAllByRole("listitem")
+  if (!first || !second) throw new Error("Both rows must be rendered.")
+  expect(within(first).queryByText(/Use different start and end radii/)).toBeNull()
+  const issue = within(second).getByText(/Use different start and end radii/)
+  const toggle = within(second).getByRole("checkbox", { name: "Variable radius for Edge 2" })
+  expect(toggle.getAttribute("aria-invalid")).toBe("true")
+  expect(toggle.getAttribute("aria-describedby")).toBe(issue.id)
+  // The group summary is not repeated once a row names the edge.
+  expect(screen.getAllByText(/Use different start and end radii/)).toHaveLength(1)
+
+  // A field-level failure is attached to that field of the owning row.
+  const start = within(first).getByRole("combobox", { name: "Start radius for Edge 1" })
+  await userEvent.clear(start)
+  await userEvent.type(start, "nonsense")
+  await submit()
+  expect(onSave).not.toHaveBeenCalled()
+  expect(start.getAttribute("aria-invalid")).toBe("true")
+  const startIssue = document.getElementById(`${start.id}-error`)
+  expect(startIssue?.textContent).toBeTruthy()
+  expect(start.getAttribute("aria-describedby")).toContain(`${start.id}-error`)
+  expect(first.contains(startIssue)).toBe(true)
+})
