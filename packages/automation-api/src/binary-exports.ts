@@ -1,5 +1,6 @@
 import { documentIdSchema, revisionSchema } from "@vibeshape/domain/identifiers"
 import { z } from "zod"
+import { prepareDrawingExportArgumentsSchema } from "./drawing-export-arguments"
 import type { LocalOperation } from "./local-tools"
 import { preparePictureRenderArgumentsSchema } from "./picture-render-arguments"
 
@@ -20,13 +21,18 @@ export const binaryExportFormatSchema = z.enum([
   "obj",
   "vshape",
   "png",
+  "svg",
+  "dxf",
+  "pdf",
 ])
 const descriptorFields = {
   exportId,
   documentId: documentIdSchema,
   revision: revisionSchema,
   format: binaryExportFormatSchema,
-  filename: z.string().regex(/^model\.(step|stl|3mf|glb|zip|vshape|png)$/),
+  filename: z
+    .string()
+    .regex(/^(?:model\.(?:step|stl|3mf|glb|zip|vshape|png)|drawing\.(?:svg|dxf|pdf))$/),
   mimeType: z.enum([
     "model/step",
     "model/stl",
@@ -35,6 +41,9 @@ const descriptorFields = {
     "application/zip",
     "application/octet-stream",
     "image/png",
+    "image/svg+xml",
+    "image/vnd.dxf",
+    "application/pdf",
   ]),
   byteLength: z.number().int().positive().max(BINARY_EXPORT_MAX_BYTES),
   sha256: z.string().regex(/^[a-f0-9]{64}$/),
@@ -70,10 +79,11 @@ export const binaryExportChunkSchema = z
 export const binaryExportDiscardSchema = z.object({ exportId, discarded: z.literal(true) }).strict()
 export const localBinaryExportInputs = {
   prepare_picture_render: preparePictureRenderArgumentsSchema,
+  prepare_drawing_export: prepareDrawingExportArgumentsSchema,
   prepare_model_export: z
     .object({
       revision: revisionSchema,
-      format: binaryExportFormatSchema.exclude(["vshape", "png"]),
+      format: binaryExportFormatSchema.exclude(["vshape", "png", "svg", "dxf", "pdf"]),
       meshQuality: meshExportQualitySchema.optional(),
     })
     .strict()
@@ -99,6 +109,10 @@ export const localBinaryExportOperations = [
   z.strictObject({
     tool: z.literal("prepare_picture_render"),
     arguments: preparePictureRenderArgumentsSchema,
+  }),
+  z.strictObject({
+    tool: z.literal("prepare_drawing_export"),
+    arguments: prepareDrawingExportArgumentsSchema,
   }),
   z
     .object({
@@ -134,6 +148,7 @@ export function isLocalBinaryExport(
 ): operation is LocalBinaryExportOperation {
   return (
     operation.tool === "prepare_picture_render" ||
+    operation.tool === "prepare_drawing_export" ||
     operation.tool === "prepare_model_export" ||
     operation.tool === "prepare_project_backup" ||
     operation.tool === "read_export_chunk" ||
@@ -175,6 +190,9 @@ export function binaryExportResultMatches(
 export function binaryExportMimeType(format: z.infer<typeof binaryExportFormatSchema>) {
   const types = {
     png: "image/png",
+    svg: "image/svg+xml",
+    dxf: "image/vnd.dxf",
+    pdf: "application/pdf",
     step: "model/step",
     stl: "model/stl",
     "3mf": "model/3mf",
@@ -184,9 +202,11 @@ export function binaryExportMimeType(format: z.infer<typeof binaryExportFormatSc
   } as const
   return types[format]
 }
-/** OBJ travels as a ZIP with its MTL library; every other format keeps its own extension. */
+/** OBJ travels as a ZIP with its MTL library; drawing sheets use a `drawing` stem. */
 export function binaryExportFilename(format: z.infer<typeof binaryExportFormatSchema>) {
-  return format === "obj" ? "model.zip" : `model.${format}`
+  if (format === "obj") return "model.zip"
+  if (format === "svg" || format === "dxf" || format === "pdf") return `drawing.${format}`
+  return `model.${format}`
 }
 
 function chunkIsConsistent(value: {

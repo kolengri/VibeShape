@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./client": "./src/client.ts",
+    "./drawing-budget": "./src/drawing-budget.ts",
     "./engine": "./src/engine.ts",
     "./runtime": "./src/runtime.ts",
     "./surface-texture": "./src/surface-texture.ts"

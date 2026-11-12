@@ -155,6 +155,8 @@ export const localToolDescriptions: Record<LocalToolName, string> = {
     "Render a derived PNG of visible committed bodies at the explicit revision in the bound project. Supports studio/wooden-table/workbench/outdoor, per-body finishes, draft/standard/high and bounded dimensions. Auto framing is default; current framing requires an explicit camera pose and never borrows another viewport. Returns actual settings, source digest and a model.png/image/png descriptor, at most 6 MiB, with SHA-256 and expiry. Transfer using read_export_chunk/discard_export. No filesystem write, browser download, document edit, pose application or Undo entry. Assembly placement and surface relief are unsupported.",
   inspect_motion_clearance:
     "Read-only exact motion clearance at bounded sampled poses including both range endpoints, using the bound committed project/revision, frozen source authority and disposable previews. Angles are radians; translation and minimumGap are mm (omission uses bound authored print-fit tolerance, falling back to 0.2 mm). Returns resolution, minimum sampled gap/pair/pose receipt, positive-volume collision counts and incomplete reasons. At most 64 samples, 32 pairs and 1024 pair-poses. Unsupported meshes or failed evidence never pass. This is sampled evidence only, never a collision-free-throughout-range guarantee; it never applies a pose.",
+  prepare_drawing_export:
+    "Prepare a derived 2D engineering drawing of the exact committed revision as SVG, R12 DXF or single-page vector PDF, up to 6 MiB. Exact hidden-line projection of terminal solids (all, or one partId with an exact body) into front/back/top/bottom/right/left/isometric views; optional settings choose views, first-angle or third-angle layout, ISO A4–A0 or US Letter/Tabloid sheet and orientation, auto or explicit scale, mm/in dimension text, hidden lines, automatic overall dimensions and diameter callouts, and title block fields. Mesh-only parts cannot be drawn. Returns a drawing.svg|dxf|pdf descriptor with SHA-256 and five-minute expiry; transfer with read_export_chunk/discard_export. No filesystem write, document edit or Undo entry.",
   prepare_model_export:
     "Prepare an immutable STEP/STL/3MF/GLB/OBJ file for the exact committed revision, up to 6 MiB. GLB uses meters with Y up; OBJ arrives as model.zip with its MTL. Optional meshQuality controls exact-solid mesh-format tessellation using chordTolerance in mm and angularTolerance in radians; omit to retain defaults. Imported meshes retain source resolution. Returns an owner-bound export ID, SHA-256 and five-minute expiry. Read bounded chunks and verify the complete byte length/hash. A new preparation evicts the previous file; no filesystem paths or model edits.",
   prepare_project_backup:
@@ -349,6 +351,7 @@ export function localToolAnnotations(name: LocalToolName) {
       "discard_import_upload",
       "prepare_picture_render",
       "inspect_motion_clearance",
+      "prepare_drawing_export",
       "prepare_model_export",
       "prepare_project_backup",
       "read_export_chunk",

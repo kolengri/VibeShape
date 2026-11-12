@@ -1,5 +1,121 @@
 {
   "app": {
+    "drawing": {
+      "title": "Create Drawing",
+      "menu": "Create Drawing…",
+      "description": "Lay out projected views of the committed model on a sheet and download SVG, DXF or PDF. Drawings are derived from the current model and do not change your project.",
+      "parts": {
+        "label": "Parts",
+        "all": "All parts",
+        "meshSkipped": "Mesh parts cannot be drawn. All parts draws the solid parts only."
+      },
+      "views": {
+        "legend": "Views",
+        "front": "Front",
+        "back": "Back",
+        "top": "Top",
+        "bottom": "Bottom",
+        "right": "Right",
+        "left": "Left",
+        "isometric": "Isometric"
+      },
+      "projection": {
+        "label": "Projection",
+        "first-angle": "First angle (ISO)",
+        "third-angle": "Third angle (ANSI)"
+      },
+      "sheetSize": {
+        "label": "Sheet size",
+        "iso-a4": "ISO A4",
+        "iso-a3": "ISO A3",
+        "iso-a2": "ISO A2",
+        "iso-a1": "ISO A1",
+        "iso-a0": "ISO A0",
+        "us-letter": "US Letter",
+        "us-tabloid": "US Tabloid"
+      },
+      "orientation": {
+        "label": "Orientation",
+        "landscape": "Landscape",
+        "portrait": "Portrait"
+      },
+      "scale": {
+        "label": "Scale",
+        "auto": "Fit to sheet",
+        "explicit": "Explicit ratio",
+        "numerator": "Drawing",
+        "denominator": "Model",
+        "ratio": "Ratio {numerator}:{denominator}"
+      },
+      "units": {
+        "label": "Dimension units",
+        "mm": "Millimeters",
+        "in": "Inches"
+      },
+      "hiddenLines": "Show hidden lines",
+      "dimensions": "Add overall dimensions and hole diameters",
+      "titleBlock": {
+        "legend": "Title block",
+        "title": "Title",
+        "titleDescription": "Leave empty to use the project name.",
+        "drawingNumber": "Drawing number",
+        "author": "Author",
+        "date": "Date",
+        "material": "Material"
+      },
+      "preview": {
+        "label": "Sheet preview",
+        "alt": "Preview of the drawing sheet",
+        "loading": "Projecting views…",
+        "scale": "Scale {scale}",
+        "notFits": "The views do not fit this sheet at the chosen scale. Choose a smaller scale or a larger sheet.",
+        "omittedCallouts": "{count, plural, one {# diameter callout was} other {# diameter callouts were}} left out: only the eight largest diameters are labeled, and a label is skipped where no clear position exists."
+      },
+      "download": {
+        "svg": "Download SVG",
+        "dxf": "Download DXF",
+        "pdf": "Download PDF"
+      },
+      "close": "Close",
+      "presetNote": "Drawing settings are remembered for this project on this device.",
+      "downloaded": "Drawing downloaded.",
+      "errors": {
+        "empty": "The model has no exact solid body to draw.",
+        "emptyMesh": "The model has no exact solid body to draw. Mesh parts cannot be projected.",
+        "tooComplex": "This drawing is too complex: a view exceeds the projected edge or curve budget. Draw fewer parts or views.",
+        "failed": "The drawing could not be created. Try again after the model finishes rebuilding."
+      },
+      "sheet": {
+        "viewLabels": {
+          "front": "Front view",
+          "back": "Back view",
+          "top": "Top view",
+          "bottom": "Bottom view",
+          "right": "Right view",
+          "left": "Left view",
+          "isometric": "Isometric view"
+        },
+        "captions": {
+          "title": "Title",
+          "drawingNumber": "Drawing number",
+          "author": "Author",
+          "date": "Date",
+          "material": "Material",
+          "scale": "Scale",
+          "units": "Units",
+          "projection": "Projection",
+          "sheet": "Sheet"
+        },
+        "projections": {
+          "first-angle": "First angle",
+          "third-angle": "Third angle"
+        },
+        "units": {
+          "mm": "mm",
+          "in": "in"
+        }
+      }
+    },
     "printFit": {
       "title": "Print fit clearance",
       "description": "Optional radial allowance stored as the ordinary #tolerance length variable. Hole fit presets add twice this value to diameter; thread presets use it once. Existing feature dimensions change only when their expressions reference it. Presets save immediately as one Undo step; edit any length expression in the variable table.",
@@ -434,6 +550,10 @@
         "selectBodyFace": "Select a current face of an exact solid."
       },
       "items": {
+        "createDrawing": {
+          "label": "Create Drawing",
+          "keywords": "drawing|2d|sheet|blueprint|projection|hidden lines|orthographic|pdf|dxf|svg"
+        },
         "openShortcutHelp": {
           "label": "Keyboard shortcuts",
           "keywords": "keyboard|shortcuts|help|hotkeys|drag and drop"

@@ -32,6 +32,7 @@ type PartDesignCommand = NonNullable<ReturnType<typeof activePartDesignCommand>>
 export type BuiltInEditorCommandContext = Readonly<{
   actions: Readonly<{
     renderPicture?: () => void
+    createDrawing?: () => void
     lightweighting?: () => void
     quickLightweighting?: () => void
     generativeDesign?: () => void
@@ -177,6 +178,14 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     icon: "render-picture",
     id: editorCommandIds.renderPicture,
     labelKey: "renderPicture",
+    ownerModuleId: editorOwner,
+    toolbarGroup: "model-inspection",
+  },
+  {
+    group: "modeling",
+    icon: "drawing",
+    id: editorCommandIds.createDrawing,
+    labelKey: "createDrawing",
     ownerModuleId: editorOwner,
     toolbarGroup: "model-inspection",
   },
@@ -1090,6 +1099,19 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
       return editorCommandEnabled()
     },
     id: editorCommandIds.renderPicture,
+    isToolbarVisible: ({ state }) => state.workspace === "model" && !state.activeSketchTool,
+    ownerModuleId: editorOwner,
+  },
+  {
+    execute: ({ actions }) => actions.createDrawing?.(),
+    getEligibility: ({ state, actions }) => {
+      if (!actions.createDrawing || state.controller.status !== "ready" || !state.controller.report)
+        return editorCommandDisabled("documentUnavailable")
+      if (state.activeSketchTool) return editorCommandDisabled("activeSketch")
+      if (state.activePartDesignCommand) return editorCommandDisabled("activeFeature")
+      return editorCommandEnabled()
+    },
+    id: editorCommandIds.createDrawing,
     isToolbarVisible: ({ state }) => state.workspace === "model" && !state.activeSketchTool,
     ownerModuleId: editorOwner,
   },

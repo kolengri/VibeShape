@@ -316,7 +316,12 @@ import {
   surfaceTextureToolNames,
 } from "./surface-texture-tools"
 
-export { type LocalFailure, localFailure, localFailureSchema } from "./local-failure"
+export {
+  LOCAL_FAILURE_MESSAGE_MAX_LENGTH,
+  type LocalFailure,
+  localFailure,
+  localFailureSchema,
+} from "./local-failure"
 
 function resultOf<Schema extends z.ZodType>(schema: Schema) {
   return z.discriminatedUnion("ok", [
@@ -572,6 +577,7 @@ export const localToolOutputs = {
   draft_sketch_solution: resultOf(automationDraftInspectionViewSchema),
   inspect_motion_clearance: resultOf(motionClearanceReportSchema),
   prepare_picture_render: resultOf(pictureRenderReceiptSchema),
+  prepare_drawing_export: resultOf(binaryExportDescriptorSchema),
   prepare_model_export: resultOf(binaryExportDescriptorSchema),
   prepare_project_backup: resultOf(binaryExportDescriptorSchema),
   read_export_chunk: resultOf(binaryExportChunkSchema),
@@ -741,6 +747,7 @@ export const localToolNameSchema = z.enum([
   "draft_sketch_solution",
   "prepare_picture_render",
   "inspect_motion_clearance",
+  "prepare_drawing_export",
   "prepare_model_export",
   "prepare_project_backup",
   "read_export_chunk",

@@ -90,6 +90,7 @@ import { executeSketchCornerCommand } from "./local-sketch-corner-command"
 import { executeSketchTextCommand } from "./local-sketch-text-command"
 import { createLocalVariableCommand } from "./local-variable-command"
 import type { createMetadataAutomationSession } from "./metadata-automation-session"
+import { modelExportFailure } from "./model-export-failure"
 import type { createMotionClearanceAutomationSession } from "./motion-clearance-automation-session"
 import type { createNumericalJobSession } from "./numerical-job-session"
 import type { createPlanarImportAutomationSession } from "./planar-import-automation-session"
@@ -102,7 +103,15 @@ import type { createBrowserSurfaceTextureAutomationSession } from "./surface-tex
 type ModelExportFormat = "step" | "stl" | "3mf" | "glb" | "obj"
 type LocalExportResult =
   | { ok: true; format: ModelExportFormat; file: Uint8Array; documentName: string }
-  | { ok: false; diagnostic: { code: string; message: string; retryable: boolean } }
+  | {
+      ok: false
+      diagnostic: {
+        code: string
+        message: string
+        retryable: boolean
+        sourceCode?: string | null | undefined
+      }
+    }
 
 type LocalSessionPort = Readonly<{
   documentId: string
@@ -181,7 +190,10 @@ function encodeExport(
     ? session.exportRevisionBound(format, revision, meshQuality)
     : session.exportRevisionBound(format, revision)
   return result.then((exported) => {
-    if (!exported.ok) return localFailure("export-failed", "The model could not be exported.", true)
+    if (!exported.ok) {
+      const failure = modelExportFailure(exported.diagnostic)
+      return localFailure(failure.code, failure.message, failure.retryable)
+    }
     if (exported.file.byteLength > LOCAL_EXPORT_MAX_BYTES)
       return localFailure("export-too-large", "The exported model exceeds the size limit.")
     let binary = ""
@@ -437,6 +449,7 @@ export function createLocalToolExecutor(
       {
         tool:
           | "prepare_picture_render"
+          | "prepare_drawing_export"
           | "prepare_model_export"
           | "prepare_project_backup"
           | "read_export_chunk"

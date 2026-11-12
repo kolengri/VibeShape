@@ -144,9 +144,9 @@ import {
 import type {
   AssemblyExportSettings,
   AssemblyInspection,
+  DrawingViewId,
   GeometryExportFormat,
   MeshExportQuality,
-  PrintPreparationResult,
   PrintPreparationSettings,
 } from "@vibeshape/protocol"
 import { assemblyExportSettingsSchema } from "@vibeshape/protocol"
@@ -164,6 +164,7 @@ import {
 import { createBinaryExportSession } from "../automation/binary-export-session"
 import { createConnectedAssistantReviews } from "../automation/connected-assistant-reviews"
 import { createDocumentAutomationSession } from "../automation/document-automation-session"
+import { createDrawingExportPreparer } from "../automation/drawing-export-source"
 import { createBrowserHistoryAutomationSession } from "../automation/history-automation-session"
 import {
   createHistoryMoveAutomationSession,
@@ -173,6 +174,7 @@ import { createImportAutomationSession } from "../automation/import-automation-s
 import type { ImportReviewedCommit, ImportReviewInput } from "../automation/import-upload-session"
 import { createBrowserLightweightingAutomationSession } from "../automation/lightweighting-automation-session"
 import { createMetadataAutomationSession } from "../automation/metadata-automation-session"
+import { preparedModelExport } from "../automation/model-export-failure"
 import { createMotionClearanceAutomationSession } from "../automation/motion-clearance-automation-session"
 import { createNumericalJobSession } from "../automation/numerical-job-session"
 import { createPictureRenderSession } from "../automation/picture-render-session"
@@ -198,7 +200,13 @@ import type { AssistantCheckpointPresentation } from "./assistant-checkpoint-pre
 import { createBrowserPart, enableAuthoredDocument } from "./authored-document-session"
 import { createAutomationLibraryPort } from "./browser-library-repository"
 import { BrowserProjectRepository } from "./browser-project-repository"
+import {
+  type ActiveDocumentDrawingResult,
+  projectSessionDrawing,
+  unavailableDrawing,
+} from "./document-drawing"
 import { prepareDocumentGeometryExport } from "./document-geometry-export"
+import { type ActiveDocumentExportResult, exportSessionGeometry } from "./document-session-export"
 import { PRODUCT_MESH_POLICY } from "./document-worker-settings"
 import { reconcileHistoryInsertion } from "./history-insertion"
 import { captureLibrarySource } from "./library-source"
@@ -241,16 +249,7 @@ type SketchMutationResult = ApplyVariableTableResult
 export type ActiveSketchSolveResult = PersistentSketchSolveResult
 export type ActiveSketchSolveOptions = PersistentSketchSolveOptions
 
-export type ActiveDocumentExportResult =
-  | {
-      ok: true
-      format: GeometryExportFormat
-      file: Uint8Array
-      bodyCount: number
-      documentName: string
-      printPreparation?: PrintPreparationResult
-    }
-  | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
+export type { ActiveDocumentExportResult } from "./document-session-export"
 
 export type ActiveAutomationInfo = Readonly<{
   summary: ReturnType<typeof documentSummaryViewSchema.parse>
@@ -1480,21 +1479,19 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     })
     const exports = createBinaryExportSession({
       preparePicture: pictureRender.prepare,
+      prepareDrawing: createDrawingExportPreparer({
+        project: (views, partId) =>
+          currentReport()
+            ? projectActiveDocumentDrawing(views, partId)
+            : Promise.resolve(unavailableDrawing),
+      }),
       documentId: capturedDocumentId,
       currentRevision: () => active.snapshot.revision,
       isActive: () => currentReport() !== null,
       async prepare(format, revision, meshQuality) {
         if (format !== "vshape") {
           const result = await exportRevisionBound(format, revision, meshQuality)
-          return result.ok
-            ? {
-                ok: true as const,
-                documentId: capturedDocumentId,
-                revision,
-                format,
-                file: result.file,
-              }
-            : { ok: false as const }
+          return preparedModelExport(result, capturedDocumentId, revision, format)
         }
         if (!currentReport() || active.snapshot.revision !== revision) return { ok: false as const }
         const result = await exportCapturedProjectBackup({
@@ -3268,39 +3265,31 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       }
     }
     const active = session
-    const { revision, name } = active.snapshot
-    const prepared = prepareDocumentGeometryExport(
-      active.authoredSnapshot,
-      state.report,
+    return exportSessionGeometry({
+      session: active,
+      report: state.report,
       format,
       partId,
       meshQuality,
-    )
-    if (!prepared.ok) return prepared
-    const result = await active.exportDocument(format, prepared.options)
-    if (session !== active || active.snapshot.revision !== revision) {
-      return {
-        ok: false,
-        diagnostic: {
-          code: "export-failed",
-          message: "The active project changed during export. Prepare the current revision again.",
-          retryable: true,
-          sourceCode: "stale-revision",
-        },
-      }
-    }
-    return result.ok
-      ? {
-          ok: true,
-          format: result.response.format,
-          file: result.response.file,
-          bodyCount: result.response.bodyCount,
-          documentName: name,
-          ...(result.response.printPreparation
-            ? { printPreparation: result.response.printPreparation }
-            : {}),
-        }
-      : result
+      isCurrent: () => session === active,
+    })
+  }
+
+  /** Exact HLR projection of the committed revision for the Drawing dialog and automation. */
+  async function projectActiveDocumentDrawing(
+    views: readonly DrawingViewId[],
+    partId?: string,
+  ): Promise<ActiveDocumentDrawingResult> {
+    const active = session
+    if (!active || state.status !== "ready" || !state.report) return unavailableDrawing
+    const revision = active.snapshot.revision
+    return projectSessionDrawing({
+      session: active,
+      report: state.report,
+      views,
+      partId,
+      isCurrent: () => session === active && active.snapshot.revision === revision,
+    })
   }
 
   async function materializeActiveDocumentSourceAssets(input: unknown) {
@@ -3716,6 +3705,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
     removeSketch,
     solveActiveSketch,
     exportActiveDocument,
+    projectActiveDocumentDrawing,
     materializeActiveDocumentSourceAssets,
     prepareActiveDocumentPrint,
     exportActiveProjectBackup,

@@ -26,6 +26,7 @@ import {
 import type { AssemblyConstraintSolvePort } from "@vibeshape/domain/assembly-mates"
 import { meshImportFeatureType } from "@vibeshape/domain/part-design-mesh-import"
 import { writeThreeMfMeshes } from "@vibeshape/formats/three-mf-meshes"
+import { DrawingBudgetError } from "@vibeshape/geometry-worker/drawing-budget"
 import type {
   DocumentPrintMeshExportInput,
   DocumentPrintMeshExportResult,
@@ -63,6 +64,7 @@ import {
 } from "./extrusion-content"
 import {
   collectDocumentPrintMeshes,
+  drawingFeatures,
   exportDocumentMeshStl,
   exportIncludesMesh,
 } from "./mesh-source-export"
@@ -481,6 +483,7 @@ export class DocumentWorkerRuntime {
     if (request.type === "reconstructPrintOptimization")
       return this.#reconstructPrintOptimization(request)
     if (request.type === "exportDocument") return this.#exportDocument(request)
+    if (request.type === "projectDrawing") return this.#projectDrawing(request)
     if (request.type === "solveSketch") return this.#solveSketch(request)
     const ownedShapeCount = this.engine.disposeDocument(request.documentId)
     this.#assemblyCache.clear()
@@ -554,7 +557,9 @@ export class DocumentWorkerRuntime {
     this.#post({ ...requestEnvelope(request), type: "sourceImportInspected", inspection })
   }
 
-  #exportState(request: Extract<DocumentWorkerRequest, { type: "exportDocument" }>) {
+  #exportState(
+    request: Extract<DocumentWorkerRequest, { type: "exportDocument" | "projectDrawing" }>,
+  ) {
     const state = this.#states.get(request.documentId)
     const document = this.#documents.get(request.documentId)
     if (
@@ -615,6 +620,43 @@ export class DocumentWorkerRuntime {
       })
     } catch (error) {
       this.#postFailure(request, "export-failed", errorMessage(error), true)
+    }
+  }
+
+  /** Projects the same terminal-body selection as export; drawings never accept mesh bodies. */
+  async #projectDrawing(request: Extract<DocumentWorkerRequest, { type: "projectDrawing" }>) {
+    const current = this.#exportState(request)
+    if (!current) {
+      this.#postFailure(
+        request,
+        "export-state-unavailable",
+        "The requested document revision does not have current rebuilt geometry.",
+        true,
+      )
+      return
+    }
+    try {
+      const selected = selectExportBodies(
+        terminalExportFeatures(current.state),
+        request.bodies,
+      ).features
+      const drawable = drawingFeatures(current.state, selected, request.bodies !== undefined)
+      if (!drawable.ok) {
+        this.#postFailure(request, "no-exportable-bodies", drawable.message, false)
+        return
+      }
+      const { features } = drawable
+      if (!this.engine.projectDrawing) throw new Error("Exact drawing projection is unavailable.")
+      const projection = await this.engine.projectDrawing({
+        documentId: request.documentId,
+        features,
+        views: request.views,
+      })
+      this.#post({ ...requestEnvelope(request), type: "drawingProjected", projection })
+    } catch (error) {
+      if (error instanceof DrawingBudgetError)
+        this.#postFailure(request, "drawing-too-complex", error.message, false)
+      else this.#postFailure(request, "export-failed", errorMessage(error), true)
     }
   }
 

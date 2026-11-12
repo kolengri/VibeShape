@@ -46,12 +46,14 @@ export function ApplicationBar({
   onOpenCommandPalette,
   onOpenShortcutHelp,
   onRenderPicture,
+  onCreateDrawing,
   hideModelExport = false,
 }: {
   children?: ReactNode
   projectNavigation?: ReactNode
   controller: DocumentControllerState
   onRenderPicture?: (() => void) | undefined
+  onCreateDrawing?: (() => void) | undefined
   hideModelExport?: boolean
   onOpenCommandPalette: (returnFocusTarget: HTMLElement) => void
   onOpenShortcutHelp: (returnFocusTarget: HTMLElement) => void
@@ -86,6 +88,7 @@ export function ApplicationBar({
         onOpenCommandPalette={onOpenCommandPalette}
         onOpenShortcutHelp={onOpenShortcutHelp}
         onRenderPicture={onRenderPicture}
+        onCreateDrawing={onCreateDrawing}
       />
       <div className="flex min-w-0 flex-1 items-center gap-1">
         {projectNavigation ?? (

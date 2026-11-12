@@ -29,6 +29,7 @@ const sketchArguments = {
 /** Omit accepted defaults to protect the advertised client contract, including nested defaults. */
 export const toolInputDefaultFixtures: { name: LocalToolName; arguments: unknown }[] = [
   { name: "prepare_picture_render", arguments: { revision: 4 } },
+  { name: "prepare_drawing_export", arguments: { revision: 4, format: "pdf" } },
   {
     name: "inspect_motion_clearance",
     arguments: { revision: 4, jointId: id, coordinate: "translation", start: 0, end: 1 },

@@ -1411,6 +1411,7 @@ describe("remote MCP in workerd", () => {
           "rename_project",
           "prepare_picture_render",
           "inspect_motion_clearance",
+          "prepare_drawing_export",
           "prepare_model_export",
           "prepare_project_backup",
           "read_export_chunk",

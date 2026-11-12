@@ -46,7 +46,8 @@
     "./lightweighting-tools": "./src/lightweighting-tools.ts",
     "./print-optimization-tools": "./src/print-optimization-tools.ts",
     "./quick-lightweighting-tools": "./src/quick-lightweighting-tools.ts",
-    "./derived-reads": "./src/derived-reads.ts"
+    "./derived-reads": "./src/derived-reads.ts",
+    "./drawing-export-arguments": "./src/drawing-export-arguments.ts"
   },
   "scripts": {
     "typecheck": "bun run ../../scripts/check-types.ts tsconfig.json tsconfig.test.json"

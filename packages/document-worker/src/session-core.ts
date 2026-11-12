@@ -3,6 +3,7 @@ import {
   type DocumentExportOptions,
   type DocumentWorkerRequest,
   type DocumentWorkerTerminalResponse,
+  type DrawingViewId,
   documentRebuildSnapshotSchema,
   documentWorkerDocumentIdSchema,
   documentWorkerRequestSchema,
@@ -26,10 +27,14 @@ type RebuildResponse = Extract<DocumentWorkerTerminalResponse, { type: "document
 type HealthResponse = Extract<DocumentWorkerTerminalResponse, { type: "health" }>
 type DisposalResponse = Extract<DocumentWorkerTerminalResponse, { type: "documentDisposed" }>
 type ExportResponse = Extract<DocumentWorkerTerminalResponse, { type: "documentExported" }>
+type DrawingResponse = Extract<DocumentWorkerTerminalResponse, { type: "drawingProjected" }>
 type SketchResponse = Extract<DocumentWorkerTerminalResponse, { type: "sketchSolved" }>
 type SolveSketchRequest = Extract<DocumentWorkerRequest, { type: "solveSketch" }>
 type ExportOptions = DocumentWorkerRequestOptions &
   DocumentExportOptions & { printPreparation?: PrintPreparationSettings }
+
+export type DrawingProjectionOptions = DocumentWorkerRequestOptions &
+  Pick<DocumentExportOptions, "bodies">
 
 export type DocumentWorkerRebuildInput = Readonly<{
   document: unknown
@@ -121,6 +126,53 @@ export class DocumentWorkerSession {
 
   exportDocument(format: GeometryExportFormat, options: ExportOptions = {}) {
     return this.#enqueue(() => this.#exportWithRecovery(format, options))
+  }
+
+  /** Projects the last successfully rebuilt revision, recovering once like export. */
+  // fallow-ignore-next-line unused-class-member -- Called through the application DocumentRebuildPort.
+  projectDrawing(views: readonly DrawingViewId[], options: DrawingProjectionOptions = {}) {
+    return this.#enqueue(async () => {
+      this.#assertOpen()
+      const snapshot = this.#lastSuccessfulSnapshot
+      if (!snapshot)
+        throw new DocumentWorkerRequestError(
+          "Drawing projection requires a successfully rebuilt snapshot.",
+          "mismatched-response-type",
+        )
+      try {
+        return await this.#projectDrawingOnce(views, options)
+      } catch (error) {
+        if (!this.#retryRecoverableFailure || !isRecoverableFailure(error)) throw error
+        this.#replaceClient()
+        await this.#rebuildOnce(snapshot, options)
+        return this.#projectDrawingOnce(views, options)
+      }
+    })
+  }
+
+  async #projectDrawingOnce(
+    views: readonly DrawingViewId[],
+    options: DrawingProjectionOptions,
+  ): Promise<DrawingResponse> {
+    const revision = this.#lastSuccessfulSnapshot?.document.revision
+    if (revision === undefined)
+      throw new DocumentWorkerRequestError(
+        "Drawing projection requires a successfully rebuilt snapshot.",
+        "mismatched-response-type",
+      )
+    const request = documentWorkerRequestSchema.parse({
+      ...this.#envelope(revision),
+      type: "projectDrawing",
+      views,
+      ...(options.bodies ? { bodies: options.bodies } : {}),
+    })
+    const response = await this.#client.request(request, options)
+    if (response.type !== "drawingProjected")
+      throw new DocumentWorkerRequestError(
+        `Expected a drawing projection response, received ${response.type}.`,
+        "mismatched-response-type",
+      )
+    return response
   }
 
   inspectAssembly(

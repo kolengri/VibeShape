@@ -118,7 +118,8 @@
     "./document-v6": "./src/document-v6.ts",
     "./document-v6-commands": "./src/document-v6-commands.ts",
     "./document-v6-command-schemas": "./src/document-v6-command-schemas.ts",
-    "./picture-render": "./src/picture-render.ts"
+    "./picture-render": "./src/picture-render.ts",
+    "./drawing": "./src/drawing.ts"
   },
   "scripts": {
     "typecheck": "bun run ../../scripts/check-types.ts tsconfig.json tsconfig.test.json"

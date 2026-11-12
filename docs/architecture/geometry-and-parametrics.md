@@ -624,6 +624,8 @@ Part Design owns FDM feature v1 validation, dependencies, semantic inputs, and q
 
 Document worker protocol v26 adds optional bounded mesh quality to geometry export, assembly export, and print-copy preparation. Omission preserves each path's previous tessellation tolerances. Display meshes and authored feature hashes do not acquire export-quality state. Native export tests verify changed tessellation and serialized STL/3MF results.
 
+Document worker protocol v29 adds `projectDrawing`: exact `HLRBRep_Algo` hidden-line projection of the export body selection into orthographic and isometric view frames. Lines and circles stay exact, other curves become polylines within 0.01 mm chordal deviation, hidden edges coincident with visible ones are dropped, and only coordinates cross the worker boundary. Sheet composition and the SVG/DXF/PDF writers run in `@vibeshape/formats`; see [ADR-0160](../adr/0160-derived-engineering-drawings.md).
+
 ## Structural lightweighting
 
 The separate numerical worker analyzes conservative full-solid hexahedral cells from a pristine

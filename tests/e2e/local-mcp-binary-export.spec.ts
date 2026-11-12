@@ -39,6 +39,10 @@ async function validateFile(format: BinaryExportDescriptor["format"], bytes: Buf
   if (format === "step") expect(bytes.toString("utf8")).toContain("ISO-10303-21;")
   if (format === "stl") expect(bytes.readUInt32LE(80) * 50 + 84).toBe(bytes.byteLength)
   if (format === "3mf") expect(bytes.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]))
+  if (format === "pdf")
+    expect(bytes.toString("latin1")).toMatch(/^%PDF-1\.4[\s\S]*\/Count 1[\s\S]*%%EOF\n$/)
+  if (format === "svg") expect(bytes.toString("utf8")).toContain('id="view-front"')
+  if (format === "dxf") expect(bytes.toString("latin1")).toContain("AC1009")
   if (format !== "vshape") return
   const decoded = await readAuthoredVShape(new Uint8Array(bytes))
   expect(decoded.ok).toBe(true)
@@ -58,6 +62,7 @@ test("retrieves exact geometry and replay-valid editable backup through actor-ow
   try {
     const tools = (await local.client.listTools()).tools
     for (const name of [
+      "prepare_drawing_export",
       "prepare_model_export",
       "prepare_project_backup",
       "read_export_chunk",
@@ -132,6 +137,24 @@ test("retrieves exact geometry and replay-valid editable backup through actor-ow
       expect(await call("read_export_chunk", { exportId: file.exportId, offset: 0 })).toMatchObject(
         { ok: false, diagnostic: { code: "export-unavailable" } },
       )
+    }
+    for (const format of ["svg", "dxf", "pdf"] as const) {
+      const file = success(
+        localToolOutputs.prepare_drawing_export.parse(
+          await call("prepare_drawing_export", {
+            revision: committed.revision,
+            format,
+            settings: { projection: "third-angle", titleBlock: { drawingNumber: "MCP-1" } },
+          }),
+        ),
+      )
+      expect(file).toMatchObject({
+        revision: committed.revision,
+        format,
+        filename: `drawing.${format}`,
+      })
+      await validateFile(format, await retrieve(call, file))
+      expect(await call("discard_export", { exportId: file.exportId })).toMatchObject({ ok: true })
     }
     expect(
       success(localToolOutputs.model_info.parse(await call("model_info", {}))).summary.revision,

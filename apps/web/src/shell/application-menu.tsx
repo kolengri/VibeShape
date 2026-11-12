@@ -14,6 +14,7 @@ import {
   ChevronDown,
   CommandIcon,
   Download,
+  DrawingIcon,
   ExtensionsIcon,
   FilesIcon,
   HelpIcon,
@@ -71,6 +72,7 @@ type ApplicationMenuProps = {
   | {
       scope?: "editor"
       onRenderPicture?: (() => void) | undefined
+      onCreateDrawing?: (() => void) | undefined
       hideModelExport?: boolean
       unitChangesBlocked: boolean
       onOpenCommandPalette: (returnFocusTarget: HTMLElement) => void
@@ -134,14 +136,17 @@ function ScriptsMenuItem({
 function ProjectOutputMenu({
   controller,
   onRenderPicture,
+  onCreateDrawing,
   launchDialog,
 }: {
   controller: DocumentControllerState
   onRenderPicture: (() => void) | undefined
+  onCreateDrawing: (() => void) | undefined
   launchDialog: (next: MenuDialog) => void
 }) {
   const t = useTranslations("app.shell.applicationMenu")
   const pictureT = useTranslations("pictureRender")
+  const drawingT = useTranslations("app.drawing")
   return (
     <>
       <DropdownMenuItem
@@ -160,6 +165,14 @@ function ProjectOutputMenu({
         <ImageIcon aria-hidden="true" />
         {pictureT("menu")}
       </DropdownMenuItem>
+      <DropdownMenuItem
+        aria-haspopup="dialog"
+        disabled={controller.status !== "ready" || controller.report === null || !onCreateDrawing}
+        onSelect={() => onCreateDrawing?.()}
+      >
+        <DrawingIcon aria-hidden="true" />
+        {drawingT("menu")}
+      </DropdownMenuItem>
     </>
   )
 }
@@ -169,6 +182,7 @@ function ApplicationProjectMenu({
   unitChangesBlocked,
   hideModelExport,
   onRenderPicture,
+  onCreateDrawing,
   backup,
   navigation,
   launchDialog,
@@ -177,6 +191,7 @@ function ApplicationProjectMenu({
   unitChangesBlocked: boolean
   hideModelExport: boolean
   onRenderPicture: (() => void) | undefined
+  onCreateDrawing: (() => void) | undefined
   backup: ReturnType<typeof useProjectBackup>
   navigation: ReturnType<typeof useProjectNavigation>
   launchDialog: (next: MenuDialog) => void
@@ -254,6 +269,7 @@ function ApplicationProjectMenu({
         <ProjectOutputMenu
           controller={controller}
           onRenderPicture={onRenderPicture}
+          onCreateDrawing={onCreateDrawing}
           launchDialog={launchDialog}
         />
       )}
@@ -412,6 +428,24 @@ function ApplicationMenuBrand({
   )
 }
 
+/**
+ * Opens a command-owned dialog from the menu; focus first returns to the trigger so the dialog
+ * restores it on close, and the menu's own close-autofocus is suppressed once.
+ */
+function commandDialogLauncher(
+  openingCommandDialog: { current: boolean },
+  trigger: { current: HTMLElement | null },
+) {
+  return (open: (() => void) | undefined) =>
+    open
+      ? () => {
+          openingCommandDialog.current = true
+          trigger.current?.focus()
+          open()
+        }
+      : undefined
+}
+
 export function ApplicationMenu(props: ApplicationMenuProps) {
   const { controller, busy = false, remoteEndpoint } = props
   const editor = props.scope === "library" ? null : props
@@ -424,6 +458,7 @@ export function ApplicationMenu(props: ApplicationMenuProps) {
   const navigation = useProjectNavigation(t("projectNavigationFailed"), t("openingProjects"))
   const trigger = useRef<HTMLButtonElement>(null)
   const openingCommandDialog = useRef(false)
+  const launchCommandDialog = commandDialogLauncher(openingCommandDialog, trigger)
   const closeDialogMenu = (event: Event) => {
     event.preventDefault()
     setOpen(false)
@@ -494,15 +529,8 @@ export function ApplicationMenu(props: ApplicationMenuProps) {
                 controller={controller}
                 unitChangesBlocked={unitChangesBlocked}
                 hideModelExport={hideModelExport}
-                onRenderPicture={
-                  editor?.onRenderPicture
-                    ? () => {
-                        openingCommandDialog.current = true
-                        trigger.current?.focus()
-                        editor.onRenderPicture?.()
-                      }
-                    : undefined
-                }
+                onRenderPicture={launchCommandDialog(editor.onRenderPicture)}
+                onCreateDrawing={launchCommandDialog(editor.onCreateDrawing)}
                 backup={backup}
                 navigation={navigation}
                 launchDialog={launchDialog}
