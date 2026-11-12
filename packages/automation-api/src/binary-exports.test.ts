@@ -65,6 +65,45 @@ const chunk = {
   base64: "AQID",
   nextOffset: 3,
 }
+describe("drawing export descriptors", () => {
+  it.each([
+    ["svg", "drawing.svg", "image/svg+xml"],
+    ["dxf", "drawing.dxf", "image/vnd.dxf"],
+    ["pdf", "drawing.pdf", "application/pdf"],
+  ] as const)("names %s sheets as drawings, never model files", (format, filename, mimeType) => {
+    expect(binaryExportFilename(format)).toBe(filename)
+    expect(binaryExportMimeType(format)).toBe(mimeType)
+    expect(
+      binaryExportDescriptorSchema.safeParse({ ...descriptor, format, filename, mimeType }).success,
+    ).toBe(true)
+    expect(
+      binaryExportDescriptorSchema.safeParse({
+        ...descriptor,
+        format,
+        filename: `model.${format}`,
+        mimeType,
+      }).success,
+    ).toBe(false)
+    const operation = { tool: "prepare_drawing_export", arguments: { revision: 4, format } }
+    expect(remoteOperationSchema.safeParse(operation).success).toBe(true)
+    expect(
+      remoteOperationSchema.safeParse({
+        tool: "prepare_model_export",
+        arguments: { revision: 4, format },
+      }).success,
+    ).toBe(false)
+    const parsed = localOperationSchema.parse(operation)
+    if (parsed.tool !== "prepare_drawing_export") throw new Error("Expected drawing export.")
+    expect(parsed.arguments.settings.views).toEqual(["front", "top", "right", "isometric"])
+    expect(
+      binaryExportResultMatches(
+        parsed,
+        { ...descriptor, format, filename, mimeType },
+        descriptor.documentId,
+      ),
+    ).toBe(true)
+  })
+})
 describe("visual mesh export descriptors", () => {
   it("names GLB as model/gltf-binary and delivers OBJ with its MTL as a ZIP", () => {
     expect(binaryExportFilename("glb")).toBe("model.glb")

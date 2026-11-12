@@ -760,6 +760,12 @@ export function exportActiveDocument(
   return runtimes.active().exportActiveDocument(...args)
 }
 
+export function projectActiveDocumentDrawing(
+  ...args: Parameters<DocumentControllerRuntime["projectActiveDocumentDrawing"]>
+): ReturnType<DocumentControllerRuntime["projectActiveDocumentDrawing"]> {
+  return runtimes.active().projectActiveDocumentDrawing(...args)
+}
+
 export function materializeActiveDocumentSourceAssets(
   ...args: Parameters<DocumentControllerRuntime["materializeActiveDocumentSourceAssets"]>
 ): ReturnType<DocumentControllerRuntime["materializeActiveDocumentSourceAssets"]> {

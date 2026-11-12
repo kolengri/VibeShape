@@ -156,6 +156,8 @@
       { "from": "geometry-worker", "allow": ["protocol", "test-models"] },
       // The sketch solver compiles pure domain records into the private native ABI.
       { "from": "sketch-solver", "allow": ["domain"] },
+      // Pure file formats depend on domain policy and serializable projection contracts only.
+      { "from": "formats", "allow": ["domain", "protocol"] },
       // Fixture packages contain data and invariants, not runtime adapters.
       { "from": "test-models", "allow": [] }
     ]

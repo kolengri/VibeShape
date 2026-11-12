@@ -1,0 +1,136 @@
+import { describe, expect, it, mock } from "bun:test"
+import type { PersistentDocumentSessionReport } from "@vibeshape/application/persistent-document-session"
+import { DRAWING_CHORD_TOLERANCE_MM } from "@vibeshape/protocol"
+import { vi } from "../../../../tests/unit/support/bun-test"
+
+const plan = vi.fn((): unknown => ({ ok: true, options: {} }))
+const planModule = { ...(await import("./document-geometry-export")) }
+mock.module("./document-geometry-export", () => ({
+  ...planModule,
+  prepareDocumentGeometryExport: plan,
+}))
+const rebuildFailed = {
+  code: "rebuild-failed" as const,
+  message: "The committed document could not be rebuilt. Its semantic revision remains saved.",
+  retryable: true,
+  sourceCode: null,
+}
+/** A report at `revision` whose rebuild succeeded or failed. */
+function report(revision = 3, rebuilt = true) {
+  return {
+    snapshot: { revision },
+    rebuild: rebuilt ? { ok: true, response: {} } : { ok: false, diagnostic: rebuildFailed },
+  } as unknown as PersistentDocumentSessionReport
+}
+const { projectSessionDrawing } = await import("./document-drawing")
+
+const projection = { chordTolerance: DRAWING_CHORD_TOLERANCE_MM, bodyCount: 1, views: [] }
+
+function session(revision = 3) {
+  const snapshot = { id: "0195b5ac-b220-7a2c-8c33-67a36a7f0001", name: "Bracket", revision }
+  return {
+    snapshot,
+    authoredSnapshot: null,
+    projectDrawing: vi.fn(async () => ({ ok: true as const, projection, revision })),
+  }
+}
+
+describe("projectSessionDrawing", () => {
+  it("omits body selection for all parts so the worker can skip mesh bodies", async () => {
+    const active = session()
+    const result = await projectSessionDrawing({
+      session: active as never,
+      report: report(),
+      views: ["front"],
+      isCurrent: () => true,
+    })
+    expect(active.projectDrawing).toHaveBeenCalledWith(["front"], {})
+    expect(result).toMatchObject({ ok: true, revision: 3, documentName: "Bracket" })
+  })
+
+  it("reports a retryable stale revision when the project changes while drawing", async () => {
+    const active = session()
+    active.projectDrawing.mockImplementationOnce(async () => {
+      active.snapshot.revision = 4
+      return { ok: true as const, projection, revision: 3 }
+    })
+    expect(
+      await projectSessionDrawing({
+        session: active as never,
+        report: report(),
+        views: ["top"],
+        isCurrent: () => true,
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { retryable: true, sourceCode: "stale-revision" } })
+  })
+
+  it.each([
+    ["part-not-found", false, "The requested part does not exist or has no current body."],
+    ["stale-revision", true, "The requested parts do not have current exportable geometry."],
+  ] as const)(
+    "passes the shared body plan's %s outcome through without projecting",
+    async (sourceCode, retryable, message) => {
+      const diagnostic = { code: "export-failed" as const, message, retryable, sourceCode }
+      plan.mockReturnValueOnce({ ok: false, diagnostic })
+      const active = session()
+      expect(
+        await projectSessionDrawing({
+          session: active as never,
+          report: report(),
+          views: ["front"],
+          partId: "0195b5ac-b220-7a2c-8c33-67a36a7f0101",
+          isCurrent: () => true,
+        }),
+      ).toEqual({ ok: false, diagnostic })
+      expect(active.projectDrawing).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each([undefined, "0195b5ac-b220-7a2c-8c33-67a36a7f0101"])(
+    "rejects a drawing when the captured revision failed to rebuild (part %s)",
+    async (partId) => {
+      // Revision 4 rebuilt; the committed revision 5 failed, so the worker still holds revision 4.
+      const active = session(5)
+      active.projectDrawing.mockResolvedValue({ ok: true as const, projection, revision: 4 })
+      expect(
+        await projectSessionDrawing({
+          session: active as never,
+          report: report(5, false),
+          views: ["front"],
+          ...(partId ? { partId } : {}),
+          isCurrent: () => true,
+        }),
+      ).toEqual({
+        ok: false,
+        diagnostic: { ...rebuildFailed, retryable: false, sourceCode: "rebuild-failed" },
+      })
+      expect(active.projectDrawing).not.toHaveBeenCalled()
+    },
+  )
+
+  it("reports a report that lags the captured revision as a retryable stale revision", async () => {
+    const active = session(5)
+    expect(
+      await projectSessionDrawing({
+        session: active as never,
+        report: report(4),
+        views: ["front"],
+        isCurrent: () => true,
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { retryable: true, sourceCode: "stale-revision" } })
+    expect(active.projectDrawing).not.toHaveBeenCalled()
+  })
+
+  it("rejects a projection the worker made from an earlier revision", async () => {
+    const active = session(5)
+    active.projectDrawing.mockResolvedValueOnce({ ok: true as const, projection, revision: 4 })
+    expect(
+      await projectSessionDrawing({
+        session: active as never,
+        report: report(5),
+        views: ["front"],
+        isCurrent: () => true,
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { retryable: true, sourceCode: "stale-revision" } })
+  })
+})

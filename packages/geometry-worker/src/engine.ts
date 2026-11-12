@@ -14,10 +14,14 @@ import {
   connectMountsFeatureContentParametersSchema,
   cylinderFeatureContentParametersSchema,
   DEFAULT_SURFACE_TEXTURE_QUALITY,
+  DRAWING_CHORD_TOLERANCE_MM,
   type DraftFeatureContentParameters,
+  type DrawingProjection,
+  type DrawingViewId,
   datumPlaneFeatureContentParametersSchema,
   datumPointFeatureContentParametersSchema,
   draftFeatureContentParametersSchema,
+  drawingProjectionSchema,
   extrusionExtentBounds,
   extrusionFeatureContentParametersSchema,
   extrusionFeatureContentParametersV5Schema,
@@ -181,6 +185,7 @@ import { createOcctConnectMounts } from "./occt-connect-mounts"
 import { makeOcctCubicBezierEdge } from "./occt-cubic-bezier"
 import { purgeOcctAllocator, runNativeOcctLifecycleCycle } from "./occt-diagnostics"
 import { DraftError, draftOcctShape } from "./occt-draft"
+import { projectOcctDrawingViews } from "./occt-drawing-projection"
 import { FilletBuildError, treatAllOcctEdges, treatSelectedOcctEdges } from "./occt-edge-treatment"
 import { exportOcctStep, importOcctStep } from "./occt-exchange"
 import {
@@ -331,6 +336,12 @@ export type DocumentGeometryExportInput = Readonly<{
 export type DocumentGeometryExportResult = Readonly<{
   file: Uint8Array
   bodyCount: number
+}>
+
+export type DocumentDrawingProjectionInput = Readonly<{
+  documentId: string
+  features: readonly FeatureEvaluationDependency[]
+  views: readonly DrawingViewId[]
 }>
 
 export type DocumentPrintMeshExportInput = Readonly<{
@@ -4939,6 +4950,7 @@ export interface GeometryKernelEngine {
   exportAssemblyStep?: (sources: readonly AssemblyNativeBody[]) => Promise<Uint8Array>
   exportDocument(input: DocumentGeometryExportInput): Promise<DocumentGeometryExportResult>
   exportPrintMeshes(input: DocumentPrintMeshExportInput): Promise<DocumentPrintMeshExportResult>
+  projectDrawing?: (input: DocumentDrawingProjectionInput) => Promise<DrawingProjection>
   runKernelSpike(
     parameters: KernelSpikeParameters,
     reportProgress: ProgressReporter,
@@ -6052,6 +6064,26 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
               ).arrayBuffer(),
             )
       return { file, bodyCount: sourceShapes.length }
+    } finally {
+      compound?.delete()
+    }
+  }
+
+  async projectDrawing(input: DocumentDrawingProjectionInput): Promise<DrawingProjection> {
+    const opencascade = this.#opencascade
+    if (!opencascade) throw new Error("OpenCascade did not initialize.")
+    if (input.features.length === 0) throw new Error("No drawable feature bodies were provided.")
+    const sourceShapes = this.#featureShapes.resolve(input.documentId, input.features)
+    if (!sourceShapes) throw new Error("One or more exact feature bodies are unavailable.")
+    const compound = sourceShapes.length > 1 ? createOcctCompound(opencascade, sourceShapes) : null
+    const shape = compound ?? sourceShapes[0]
+    if (!shape) throw new Error("No drawable feature body was resolved.")
+    try {
+      return drawingProjectionSchema.parse({
+        chordTolerance: DRAWING_CHORD_TOLERANCE_MM,
+        bodyCount: sourceShapes.length,
+        views: projectOcctDrawingViews(opencascade, shape.wrapped, input.views),
+      })
     } finally {
       compound?.delete()
     }

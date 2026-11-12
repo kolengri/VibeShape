@@ -350,7 +350,7 @@ The implemented foundation is intentionally narrower: document variables have st
 | Simple rigid transforms | P1 |
 | Assemblies and mates | P2 |
 | BOM | Implemented (assembly workspace and MCP) |
-| Drawings | P2 |
+| Drawings | Implemented (projected views, auto dimensions, SVG/DXF/PDF; editor and MCP) |
 
 ## Measurement and analysis
 
@@ -415,6 +415,17 @@ The implemented export dialog downloads successful terminal bodies as determinis
 ## Assembly motion studies
 
 Named studies retain simultaneous joint-coordinate keyframes in the ordinary project authority. The editor supports scrubbing, reverse playback, looping, relative speed, solved pose application and JSON/CSV/point-trace export. PNG sequences use a fixed camera and download as a ZIP. The first loop solves a bounded set of poses; subsequent loops reuse those exact results. MCP exposes study authoring and sampling through the existing reviewed assembly drafts. Gear/cam links, contact response, additional mate kinds and GIF encoding remain separate capabilities. See [ADR-0113](../adr/0113-assembly-motion-studies.md).
+
+## Engineering drawings
+
+Create Drawing projects committed exact solids with OCCT hidden-line removal into front, back,
+top, bottom, right, left and isometric views, lays them out in first- or third-angle projection on
+ISO A4–A0 or US Letter/Tabloid sheets with automatic or explicit ISO 5455 scale, adds overall
+dimensions, diameter callouts and an ISO 7200-style title block, and downloads deterministic SVG,
+R12 DXF or vector PDF. Paired automation prepares the same files through `prepare_drawing_export`.
+Drawings are derived; a per-device preset remembers dialog settings. Manual dimensions, section and
+detail views and drawings stored in the project remain open. See [drawings](drawings.md) and
+[ADR-0160](../adr/0160-derived-engineering-drawings.md).
 
 ## Model pictures and sampled motion clearance
 

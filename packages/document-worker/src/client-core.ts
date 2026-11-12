@@ -40,6 +40,7 @@ const terminalResponseTypeByRequest = {
   inspectAssembly: "assemblyInspected",
   exportAssembly: "assemblyExported",
   exportDocument: "documentExported",
+  projectDrawing: "drawingProjected",
   disposeDocument: "documentDisposed",
   healthCheck: "health",
 } as const satisfies Record<

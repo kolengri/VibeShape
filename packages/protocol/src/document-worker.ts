@@ -5,6 +5,7 @@ import {
   assemblyInspectionSchema,
   inspectAssemblyInputSchema,
 } from "./assembly-inspection"
+import { drawingProjectionSchema, drawingProjectionViewsSchema } from "./drawing-projection"
 import {
   exportAppearanceSchema,
   extrusionFrameSchema,
@@ -40,7 +41,7 @@ import {
   surfaceTextureQualitySchema,
 } from "./surface-texture"
 
-export const DOCUMENT_PROTOCOL_VERSION = 28 as const
+export const DOCUMENT_PROTOCOL_VERSION = 29 as const
 
 const MAX_FEATURES = 100_000
 const MAX_SKETCHES = 256
@@ -217,6 +218,13 @@ const exportDocumentRequestSchema = requestEnvelopeSchema
     message: "Mesh quality is available only for mesh export formats.",
   })
 
+/** Exact hidden-line projection of the selected terminal bodies at the rebuilt revision. */
+const projectDrawingRequestSchema = requestEnvelopeSchema.extend({
+  type: z.literal("projectDrawing"),
+  views: drawingProjectionViewsSchema,
+  bodies: documentExportBodiesSchema.optional(),
+})
+
 const solveSketchRequestSchema = requestEnvelopeSchema
   .extend({
     type: z.literal("solveSketch"),
@@ -276,6 +284,7 @@ export const documentWorkerRequestSchema = z.discriminatedUnion("type", [
   }),
   solveSketchRequestSchema,
   exportDocumentRequestSchema,
+  projectDrawingRequestSchema,
   disposeDocumentRequestSchema,
   healthCheckRequestSchema,
 ])
@@ -767,6 +776,7 @@ export const documentWorkerDiagnosticCodeSchema = z.enum([
   "export-state-unavailable",
   "no-exportable-bodies",
   "export-failed",
+  "drawing-too-complex",
   "sketch-state-unavailable",
   "sketch-not-found",
   "sketch-solver-unavailable",
@@ -836,6 +846,10 @@ export const documentWorkerResponseSchema = z.discriminatedUnion("type", [
   assemblyExportedResponseSchema,
   sketchSolvedResponseSchema,
   documentExportedResponseSchema,
+  responseEnvelopeSchema.extend({
+    type: z.literal("drawingProjected"),
+    projection: drawingProjectionSchema,
+  }),
   documentDisposedResponseSchema,
   healthResponseSchema,
   failureResponseSchema,

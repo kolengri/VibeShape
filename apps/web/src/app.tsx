@@ -63,6 +63,7 @@ import {
   AssemblyToolbarProvider,
   AssemblyToolbarSlot,
 } from "./features/assembly/assembly-toolbar-portal"
+import { DrawingDialog } from "./features/drawing/drawing-dialog"
 import { edgeTreatmentCreateTool } from "./features/edge-treatment/edge-treatment-activation"
 import { LightweightingWorkspace } from "./features/lightweighting/lightweighting-workspace"
 import { useLightweightingCommand } from "./features/lightweighting/use-lightweighting-command"
@@ -815,6 +816,7 @@ function resolveEditorApplicationCommands(
     openShortcutHelp: () => void
     openSketchText: () => void
     renderPicture: () => void
+    createDrawing: () => void
     lightweighting: () => void
     quickLightweighting: () => void
     generativeDesign: () => void
@@ -1142,6 +1144,7 @@ function assemblySwitchDisabled(
   )
 }
 
+/** Focus-restoring state for a modal launched from the command palette, toolbar or menu. */
 function usePictureDialog(
   paletteOpen: boolean,
   paletteReturnFocus: { current: HTMLElement | null },
@@ -1169,8 +1172,15 @@ function usePictureDialog(
 }
 
 function pictureRenderMenuAction(commands: readonly ResolvedEditorCommand[], show: () => void) {
-  return commands.find(({ descriptor }) => descriptor.id === editorCommandIds.renderPicture)
-    ?.eligibility.enabled
+  return commandMenuAction(commands, editorCommandIds.renderPicture, show)
+}
+
+function commandMenuAction(
+  commands: readonly ResolvedEditorCommand[],
+  id: string,
+  show: () => void,
+) {
+  return commands.find(({ descriptor }) => descriptor.id === id)?.eligibility.enabled
     ? show
     : undefined
 }
@@ -1197,6 +1207,11 @@ function EditorApplication({
     commandPaletteFocus.returnFocusRef,
     !assemblyMode.active,
   )
+  const drawing = usePictureDialog(
+    session.commandPaletteOpen,
+    commandPaletteFocus.returnFocusRef,
+    !assemblyMode.active,
+  )
   const shortcutHelp = useShortcutHelp()
   const sketchShortcutToolbarAvailable = isActiveSketchEditorTool(session.sketch.activeSketchTool)
   const {
@@ -1212,6 +1227,7 @@ function EditorApplication({
     workspaceActions,
     {
       renderPicture: picture.show,
+      createDrawing: drawing.show,
       openShortcutHelp: shortcutHelp.show,
       openSketchText: textDialog.actions.create,
       lightweighting: () => {
@@ -1269,6 +1285,11 @@ function EditorApplication({
           projectNavigation={<LocalizedProjectTabs controller={controller} />}
           hideModelExport={assemblyMode.active}
           onRenderPicture={pictureRenderMenuAction(modelCommands, picture.show)}
+          onCreateDrawing={commandMenuAction(
+            modelCommands,
+            editorCommandIds.createDrawing,
+            drawing.show,
+          )}
           onOpenShortcutHelp={shortcutHelp.show}
           onOpenCommandPalette={(returnFocusTarget) =>
             commandPaletteFocus.setOpen(true, returnFocusTarget)
@@ -1285,6 +1306,12 @@ function EditorApplication({
           open={picture.open}
           onOpenChange={picture.setOpen}
           onCloseAutoFocus={picture.restoreFocus}
+        />
+        <DrawingDialog
+          controller={controller}
+          open={drawing.open}
+          onOpenChange={drawing.setOpen}
+          onCloseAutoFocus={drawing.restoreFocus}
         />
         <ShortcutHelpDialog
           commands={commands}

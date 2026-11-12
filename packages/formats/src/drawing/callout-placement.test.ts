@@ -1,0 +1,424 @@
+import { describe, expect, it } from "bun:test"
+import { type DrawingSettings, drawingSettingsSchema } from "@vibeshape/domain/drawing"
+import {
+  DRAWING_CHORD_TOLERANCE_MM,
+  type DrawingProjection,
+  type DrawingViewProjection,
+} from "@vibeshape/protocol"
+import {
+  composeDrawingSheet,
+  type DrawingSheet,
+  type DrawingSheetCopy,
+  type SheetPrimitive,
+} from "./index"
+import { primitiveBox, type SheetBox } from "./text-metrics"
+
+const copy: DrawingSheetCopy = {
+  viewLabels: {
+    front: "Front view",
+    back: "Back view",
+    top: "Top view",
+    bottom: "Bottom view",
+    right: "Right view",
+    left: "Left view",
+    isometric: "Isometric view",
+  },
+  captions: {
+    title: "Title",
+    drawingNumber: "Drawing number",
+    author: "Author",
+    date: "Date",
+    material: "Material",
+    scale: "Scale",
+    units: "Units",
+    projection: "Projection",
+    sheet: "Sheet",
+  },
+  projections: { "first-angle": "First angle", "third-angle": "Third angle" },
+  units: { mm: "mm", in: "in" },
+}
+
+type Circle = readonly [x: number, y: number, radius: number]
+
+/** A 40 × 30 mm top view outline with the given visible circles. */
+function topView(circles: readonly Circle[]): DrawingProjection {
+  const corners: [number, number][] = [
+    [0, 0],
+    [40, 0],
+    [40, 30],
+    [0, 30],
+  ]
+  const edges: DrawingViewProjection["edges"] = [
+    ...corners.map((start, index) => ({
+      visibility: "visible" as const,
+      edgeClass: "sharp" as const,
+      curve: { kind: "line" as const, start, end: corners[(index + 1) % 4] ?? start },
+    })),
+    ...circles.map(([x, y, radius]) => ({
+      visibility: "visible" as const,
+      edgeClass: "sharp" as const,
+      curve: { kind: "circle" as const, center: [x, y] as [number, number], radius },
+    })),
+  ]
+  return {
+    chordTolerance: DRAWING_CHORD_TOLERANCE_MM,
+    bodyCount: 1,
+    views: [{ view: "top", bounds: { min: [0, 0], max: [40, 30] }, edges }],
+  }
+}
+
+function compose(circles: readonly Circle[], overrides: Partial<DrawingSettings> = {}) {
+  return composeDrawingSheet({
+    projection: topView(circles),
+    settings: {
+      ...drawingSettingsSchema.parse({ views: ["top"] }),
+      scale: { mode: "explicit", numerator: 1, denominator: 1 },
+      ...overrides,
+    },
+    copy,
+    documentTitle: "Callouts",
+  })
+}
+
+const primitivesOf = (sheet: DrawingSheet, ids: readonly string[]) =>
+  sheet.groups.filter(({ id }) => ids.includes(id)).flatMap(({ primitives }) => primitives)
+const texts = (sheet: DrawingSheet) =>
+  primitivesOf(sheet, ["dimensions", "labels"]).filter(
+    (item): item is Extract<SheetPrimitive, { kind: "text" }> => item.kind === "text",
+  )
+const intersects = (left: SheetBox, right: SheetBox) =>
+  left[0] < right[2] && right[0] < left[2] && left[1] < right[3] && right[1] < left[3]
+
+function overlappingTexts(sheet: DrawingSheet) {
+  const all = texts(sheet)
+  return all.flatMap((left, index) =>
+    all
+      .slice(index + 1)
+      .filter((right) => intersects(primitiveBox(left), primitiveBox(right)))
+      .map((right) => [left.text, right.text]),
+  )
+}
+
+const near = (left: readonly number[], right: readonly number[]) =>
+  Math.hypot((left[0] ?? 0) - (right[0] ?? 0), (left[1] ?? 0) - (right[1] ?? 0)) < 1e-6
+
+type Line = Extract<SheetPrimitive, { kind: "line" }>
+type Point = readonly [number, number]
+
+/** The far end of the line that touches `point`, skipping `except`. */
+function continueFrom(lines: readonly Line[], point: Point, except?: Line) {
+  const next = lines.find(
+    (item) => item !== except && (near(item.start, point) || near(item.end, point)),
+  )
+  if (!next) return null
+  return { line: next, end: near(next.start, point) ? next.end : next.start }
+}
+
+/** Follows a Ø label through its shoulder and leader to the arrow tip. */
+function leaderTip(lines: readonly Line[], label: Extract<SheetPrimitive, { kind: "text" }>) {
+  const side = label.align === "end" ? 1 : -1
+  const shoulder = continueFrom(lines, [label.position[0] + side, label.position[1] + 1])
+  return shoulder ? (continueFrom(lines, shoulder.end, shoulder.line)?.end ?? null) : null
+}
+
+/** Checks that each Ø label's leader starts on a drawn circle of the labelled diameter. */
+function calloutRoutes(sheet: DrawingSheet, units: DrawingSettings["units"] = "mm") {
+  const factor = sheet.scale.numerator / sheet.scale.denominator
+  const lines = primitivesOf(sheet, ["dimensions"]).filter(
+    (item): item is Line => item.kind === "line",
+  )
+  const circles = primitivesOf(sheet, ["view-top"]).filter(
+    (item): item is Extract<SheetPrimitive, { kind: "circle" }> => item.kind === "circle",
+  )
+  // Labels round to 2 (mm) or 3 (in) decimals; compare the sheet radius within that rounding.
+  const scaleToSheet = (units === "in" ? 25.4 : 1) * factor
+  const rounding = (units === "in" ? 0.0005 : 0.005) * scaleToSheet
+  return texts(sheet)
+    .filter((label) => label.text.includes("Ø"))
+    .map((label) => {
+      const tip = leaderTip(lines, label)
+      const radius = (Number(label.text.split("Ø")[1]) / 2) * scaleToSheet
+      const routed =
+        tip !== null &&
+        circles.some(
+          (circle) =>
+            Math.abs(circle.radius - radius) <= rounding &&
+            Math.abs(
+              Math.hypot(tip[0] - circle.center[0], tip[1] - circle.center[1]) - circle.radius,
+            ) < 1e-6,
+        )
+      return { text: label.text, routed }
+    })
+}
+
+/** Strict-interior Liang–Barsky test: does segment start→end pass through `box`? */
+function crossesBox(start: Point, end: Point, box: SheetBox) {
+  const [dx, dy] = [end[0] - start[0], end[1] - start[1]]
+  let [from, to] = [0, 1]
+  const sides: [number, number][] = [
+    [-dx, start[0] - box[0]],
+    [dx, box[2] - start[0]],
+    [-dy, start[1] - box[1]],
+    [dy, box[3] - start[1]],
+  ]
+  for (const [p, q] of sides) {
+    if (Math.abs(p) < 1e-12) {
+      if (q <= 0) return false
+    } else if (p < 0) from = Math.max(from, q / p)
+    else to = Math.min(to, q / p)
+  }
+  return to - from > 1e-9
+}
+
+/** Texts crossed by a slanted leader, and Ø labels lying on the view's own lines. */
+function calloutClashes(sheet: DrawingSheet) {
+  const leaders = primitivesOf(sheet, ["dimensions"]).filter(
+    (item): item is Line =>
+      item.kind === "line" && item.start[0] !== item.end[0] && item.start[1] !== item.end[1],
+  )
+  const outline = primitivesOf(sheet, ["view-top"]).filter(
+    (item): item is Line => item.kind === "line",
+  )
+  const all = texts(sheet)
+  return [
+    ...leaders.flatMap((leader) =>
+      all
+        .filter((label) => crossesBox(leader.start, leader.end, primitiveBox(label)))
+        .map((label) => `leader through ${label.text}`),
+    ),
+    ...all
+      .filter((label) => label.text.includes("Ø"))
+      .filter((label) =>
+        outline.some((edge) => crossesBox(edge.start, edge.end, primitiveBox(label))),
+      )
+      .map((label) => `${label.text} on a view line`),
+  ]
+}
+
+describe("diameter callout placement", () => {
+  const cases: [string, Circle[], string[]][] = [
+    [
+      "concentric 5 and 6 mm radii at 1:1",
+      [
+        [20, 15, 5],
+        [20, 15, 6],
+      ],
+      ["Ø10", "Ø12"],
+    ],
+    [
+      "a counterbore, its through hole and a third ring",
+      [
+        [20, 15, 3],
+        [20, 15, 6],
+        [20, 15, 8],
+      ],
+      ["Ø6", "Ø12", "Ø16"],
+    ],
+    [
+      "two non-concentric holes close together",
+      [
+        [15, 15, 2],
+        [19, 15, 2.5],
+      ],
+      ["Ø4", "Ø5"],
+    ],
+  ]
+  it.each(cases)("keeps every text readable for %s", (_, circles, labels) => {
+    const sheet = compose(circles)
+    expect(overlappingTexts(sheet)).toEqual([])
+    expect(
+      calloutRoutes(sheet)
+        .map(({ text }) => text)
+        .sort(),
+    ).toEqual([...labels].sort())
+    expect(calloutRoutes(sheet).filter(({ routed }) => !routed)).toEqual([])
+  })
+
+  it("keeps labels apart when the view is auto-scaled and dimensioned in inches", () => {
+    const sheet = compose(
+      [
+        [20, 15, 3],
+        [20, 15, 3.3],
+        [20, 15, 8],
+        [8, 8, 2],
+        [32, 8, 2],
+      ],
+      { scale: { mode: "auto" }, units: "in" },
+    )
+    expect(overlappingTexts(sheet)).toEqual([])
+    expect(calloutRoutes(sheet, "in").filter(({ routed }) => !routed)).toEqual([])
+  })
+
+  it("keeps leaders out of placed labels", () => {
+    const sheet = compose([
+      [9.1, 8.7, 2.4],
+      [24.5, 23.3, 2.9],
+      [16.6, 19.4, 2.2],
+    ])
+    expect(calloutClashes(sheet)).toEqual([])
+    expect(calloutRoutes(sheet).filter(({ routed }) => !routed)).toEqual([])
+  })
+
+  it("never crosses text with a leader or puts a label on a view line across random layouts", () => {
+    let seed = 11
+    const random = () => {
+      seed = (seed * 16807) % 2147483647
+      return seed / 2147483647
+    }
+    const clashes = Array.from({ length: 300 }, () => {
+      const circles = Array.from({ length: 2 + Math.floor(random() * 3) }, (): Circle => {
+        const radius = Math.round((0.5 + random() * 2.5) * 10) / 10
+        return [
+          Math.round((radius + random() * (40 - 2 * radius)) * 10) / 10,
+          Math.round((radius + random() * (30 - 2 * radius)) * 10) / 10,
+          radius,
+        ]
+      })
+      const sheet = compose(circles)
+      return calloutClashes(sheet).map((clash) => `${clash} in ${JSON.stringify(circles)}`)
+    }).flat()
+    expect(clashes).toEqual([])
+  })
+
+  it("counts callouts it cannot place instead of drawing them over other text", () => {
+    const rings: Circle[] = Array.from({ length: 12 }, (_, index) => [20, 15, 1 + index * 0.05])
+    const sheet = compose(rings)
+    expect(overlappingTexts(sheet)).toEqual([])
+    const placed = calloutRoutes(sheet).length
+    expect(placed + sheet.omittedCallouts).toBe(12)
+    expect(sheet.omittedCallouts).toBeGreaterThan(0)
+  })
+})
+
+describe("callout labels and hidden lines", () => {
+  it("keeps labels off dashed hidden lines when hidden lines are drawn", () => {
+    const projection = topView([[20, 15, 3]])
+    const [view] = projection.views
+    if (!view) throw new Error("Expected the top view.")
+    const hidden = [21, 22.5, 24, 25.5, 27, 28.5].map((y) => ({
+      visibility: "hidden" as const,
+      edgeClass: "sharp" as const,
+      curve: {
+        kind: "line" as const,
+        start: [0, y] as [number, number],
+        end: [40, y] as [number, number],
+      },
+    }))
+    const sheet = composeDrawingSheet({
+      projection: { ...projection, views: [{ ...view, edges: [...view.edges, ...hidden] }] },
+      settings: {
+        ...drawingSettingsSchema.parse({ views: ["top"] }),
+        scale: { mode: "explicit", numerator: 1, denominator: 1 },
+      },
+      copy,
+      documentTitle: "Callouts",
+    })
+    const dashed = primitivesOf(sheet, ["view-top"]).filter(
+      (item): item is Line => item.kind === "line" && item.layer === "hidden",
+    )
+    expect(dashed.length).toBe(hidden.length)
+    expect(
+      texts(sheet)
+        .filter((label) => label.text.includes("Ø"))
+        .filter((label) =>
+          dashed.some((edge) => crossesBox(edge.start, edge.end, primitiveBox(label))),
+        )
+        .map((label) => label.text),
+    ).toEqual([])
+    expect(calloutRoutes(sheet).filter(({ routed }) => !routed)).toEqual([])
+  })
+
+  it("keeps labels off hidden circles when hidden lines are drawn", () => {
+    const projection = topView([[20, 15, 3]])
+    const [view] = projection.views
+    if (!view) throw new Error("Expected the top view.")
+    // A hidden ring centred where the first up-right label would sit.
+    const ring = {
+      visibility: "hidden" as const,
+      edgeClass: "sharp" as const,
+      curve: { kind: "circle" as const, center: [36, 23.5] as [number, number], radius: 1.5 },
+    }
+    const sheet = composeDrawingSheet({
+      projection: { ...projection, views: [{ ...view, edges: [...view.edges, ring] }] },
+      settings: {
+        ...drawingSettingsSchema.parse({ views: ["top"] }),
+        scale: { mode: "explicit", numerator: 1, denominator: 1 },
+      },
+      copy,
+      documentTitle: "Callouts",
+    })
+    const hidden = primitivesOf(sheet, ["view-top"]).filter(
+      (item): item is Extract<SheetPrimitive, { kind: "circle" }> =>
+        item.kind === "circle" && item.layer === "hidden",
+    )
+    expect(hidden).toHaveLength(1)
+    const crossesRing = (box: SheetBox, circle: (typeof hidden)[number]) => {
+      const [cx, cy] = circle.center
+      const nearest = Math.hypot(
+        Math.max(box[0] - cx, 0, cx - box[2]),
+        Math.max(box[1] - cy, 0, cy - box[3]),
+      )
+      const farthest = Math.hypot(
+        Math.max(cx - box[0], box[2] - cx),
+        Math.max(cy - box[1], box[3] - cy),
+      )
+      return nearest <= circle.radius && circle.radius <= farthest
+    }
+    expect(
+      texts(sheet)
+        .filter((label) => label.text.includes("Ø"))
+        .filter((label) => hidden.some((circle) => crossesRing(primitiveBox(label), circle)))
+        .map((label) => label.text),
+    ).toEqual([])
+    expect(calloutRoutes(sheet).map(({ text }) => text)).toEqual(["Ø6"])
+  })
+})
+
+describe("callouts for many repeated holes", () => {
+  it("groups 20,000 equal holes into one callout beside the distinct ones", () => {
+    const side = 1000
+    const corners: [number, number][] = [
+      [0, 0],
+      [side, 0],
+      [side, side],
+      [0, side],
+    ]
+    const circle = (center: [number, number], radius: number) => ({
+      visibility: "visible" as const,
+      edgeClass: "sharp" as const,
+      curve: { kind: "circle" as const, center, radius },
+    })
+    const holes = Array.from({ length: 20_000 }, (_, index) =>
+      circle([5 + (index % 140) * 7, 5 + Math.floor(index / 140) * 7], 2),
+    )
+    const bosses = [circle([990, 990], 8), circle([960, 990], 6), circle([930, 990], 5)]
+    const edges: DrawingViewProjection["edges"] = [
+      ...corners.map((start, index) => ({
+        visibility: "visible" as const,
+        edgeClass: "sharp" as const,
+        curve: { kind: "line" as const, start, end: corners[(index + 1) % 4] ?? start },
+      })),
+      ...holes,
+      ...bosses,
+    ]
+    const sheet = composeDrawingSheet({
+      projection: {
+        chordTolerance: DRAWING_CHORD_TOLERANCE_MM,
+        bodyCount: 1,
+        views: [{ view: "top", bounds: { min: [0, 0], max: [side, side] }, edges }],
+      },
+      settings: drawingSettingsSchema.parse({ views: ["top"] }),
+      copy,
+      documentTitle: "Perforated plate",
+    })
+    const labels = texts(sheet)
+      .filter((label) => label.text.includes("Ø"))
+      .map((label) => label.text)
+    expect(labels.length + sheet.omittedCallouts).toBe(4)
+    // One group per diameter: the repeated hole once with its count, each boss on its own.
+    expect(labels).toContain("20000× Ø4")
+    expect(new Set(labels).size).toBe(labels.length)
+    expect(labels.every((label) => ["20000× Ø4", "Ø16", "Ø12", "Ø10"].includes(label))).toBe(true)
+    expect(overlappingTexts(sheet)).toEqual([])
+  })
+})

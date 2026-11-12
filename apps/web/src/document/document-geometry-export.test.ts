@@ -15,7 +15,11 @@ import {
   repairRemovalCommand,
 } from "../../../../packages/domain/src/history-repair.test-fixture"
 import { authoredTestBody } from "../test-support/authored-tree-fixture"
-import { prepareDocumentGeometryExport } from "./document-geometry-export"
+import {
+  currentGeometryFailure,
+  prepareDocumentGeometryExport,
+  producedRevisionFailure,
+} from "./document-geometry-export"
 
 function fixture() {
   const before = historyRepairFixture()
@@ -144,4 +148,79 @@ describe("V5 independent textured export", () => {
       )
     },
   )
+})
+
+describe("requested part availability", () => {
+  it("reports a report that lags the authority as a retryable stale revision", () => {
+    const f = fixture()
+    const lagging = {
+      ...f.report,
+      snapshot: { ...f.report.snapshot, revision: f.report.snapshot.revision - 1 },
+    }
+    expect(prepareDocumentGeometryExport(f.authority, lagging, "step", f.part.id)).toEqual({
+      ok: false,
+      diagnostic: {
+        code: "export-failed",
+        message: "The requested parts do not have current exportable geometry.",
+        retryable: true,
+        sourceCode: "stale-revision",
+      },
+    })
+  })
+
+  it("reports an unknown part at a current revision as non-retryable part-not-found", () => {
+    const f = fixture()
+    expect(prepareDocumentGeometryExport(f.authority, f.report, "step", repairId(599))).toEqual({
+      ok: false,
+      diagnostic: {
+        code: "export-failed",
+        message: "The requested part does not exist or has no current body.",
+        retryable: false,
+        sourceCode: "part-not-found",
+      },
+    })
+  })
+})
+
+describe("current geometry for exports and drawings", () => {
+  it("accepts a report at the captured revision whose rebuild succeeded", () => {
+    const f = fixture()
+    expect(currentGeometryFailure(f.report, f.report.snapshot.revision)).toBeNull()
+    expect(producedRevisionFailure(5, 5)).toBeNull()
+  })
+
+  it("rejects a lagging report as retryable and a failed rebuild as final", () => {
+    const f = fixture()
+    const revision = f.report.snapshot.revision
+    expect(currentGeometryFailure(f.report, revision + 1)).toMatchObject({
+      retryable: true,
+      sourceCode: "stale-revision",
+    })
+    const failed = {
+      ...f.report,
+      rebuild: {
+        ok: false as const,
+        diagnostic: {
+          code: "rebuild-failed" as const,
+          message:
+            "The committed document could not be rebuilt. Its semantic revision remains saved.",
+          retryable: true,
+          sourceCode: null,
+        },
+      },
+    }
+    expect(currentGeometryFailure(failed, revision)).toEqual({
+      code: "rebuild-failed",
+      message: "The committed document could not be rebuilt. Its semantic revision remains saved.",
+      retryable: false,
+      sourceCode: "rebuild-failed",
+    })
+  })
+
+  it("rejects geometry the worker produced from an earlier successful rebuild", () => {
+    expect(producedRevisionFailure(4, 5)).toMatchObject({
+      retryable: true,
+      sourceCode: "stale-revision",
+    })
+  })
 })

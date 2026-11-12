@@ -18,13 +18,15 @@
     "./gltf-meshes": "./src/gltf-meshes.ts",
     "./obj-meshes": "./src/obj-meshes.ts",
     "./visual-meshes": "./src/visual-meshes.ts",
-    "./f3d": "./src/f3d/index.ts"
+    "./f3d": "./src/f3d/index.ts",
+    "./drawing": "./src/drawing/index.ts"
   },
   "scripts": {
     "typecheck": "bun run ../../scripts/check-types.ts tsconfig.json tsconfig.test.json"
   },
   "dependencies": {
     "@vibeshape/domain": "workspace:*",
+    "@vibeshape/protocol": "workspace:*",
     "dxf-parser": "1.1.2",
     "fflate": "catalog:",
     "opentype.js": "2.0.0",
