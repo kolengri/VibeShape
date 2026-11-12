@@ -1,3 +1,4 @@
+import type { Locator } from "@playwright/test"
 import { expect, test } from "./fixtures"
 import { expandHistoryDetails, invokeModelCommand } from "./model-command-support"
 import {
@@ -15,6 +16,22 @@ import {
   selectSketchTool,
   unobscuredDrawingBounds,
 } from "./sketch-helpers"
+
+/** The first row from `y` toward the canvas center where a pointer reaches the drawing itself. */
+async function freeDrawingRow(drawing: Locator, x: number, y: number, direction: 1 | -1) {
+  for (let offset = 0; offset <= 160; offset += 4) {
+    const row = y + direction * offset
+    const free = await drawing.evaluate(
+      (element, [pointX, pointY]) => {
+        const target = element.ownerDocument.elementFromPoint(pointX ?? 0, pointY ?? 0)
+        return target !== null && element.contains(target)
+      },
+      [x, row],
+    )
+    if (free) return row
+  }
+  throw new Error("No free drawing row near the requested edge.")
+}
 
 test.describe("full sketch editor", () => {
   test("applies a preselected constraint once and keeps the repeatable tool active", async ({
@@ -2294,8 +2311,10 @@ test.describe("full sketch editor", () => {
     if (!viewport) throw new Error("The sketch viewport is not measurable.")
 
     await page.getByRole("button", { name: "Line", exact: true }).click()
-    const firstPoint = { x: bounds.x + bounds.width * 0.45, y: bounds.y + 8 }
-    const secondPoint = { x: bounds.x + bounds.width * 0.6, y: bounds.y + 8 }
+    // Floating toolbars may overlap the band next to an edge; use the first free canvas row.
+    const top = await freeDrawingRow(drawing, bounds.x + bounds.width * 0.45, bounds.y + 8, 1)
+    const firstPoint = { x: bounds.x + bounds.width * 0.45, y: top }
+    const secondPoint = { x: bounds.x + bounds.width * 0.6, y: top }
     await page.mouse.click(firstPoint.x, firstPoint.y)
     await page.mouse.click(secondPoint.x, secondPoint.y)
 
@@ -2307,7 +2326,9 @@ test.describe("full sketch editor", () => {
     expect(topBounds.y).toBeGreaterThanOrEqual(0)
     expect(topBounds.y + topBounds.height).toBeLessThanOrEqual(viewport.height)
 
-    await page.mouse.click(bounds.x + bounds.width * 0.75, bounds.y + bounds.height - 8)
+    const bottomX = bounds.x + bounds.width * 0.75
+    const bottom = await freeDrawingRow(drawing, bottomX, bounds.y + bounds.height - 8, -1)
+    await page.mouse.click(bottomX, bottom)
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(2)
     const bottomBounds = await trigger.boundingBox()
     if (!bottomBounds) throw new Error("The optional precision control is not visible.")
