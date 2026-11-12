@@ -55,7 +55,7 @@ for (const operation of ["fillet", "chamfer"] as const) {
     if (operation === "fillet") {
       // Fillet forwards the worker's diagnostic instead of the generic copy. Its wording may grow
       // more specific; the contract is that it names the radius that failed.
-      await expect(failure).toContainText("100 mm")
+      await expect(failure).toContainText(/radius 100 mm/)
       await expect(failure).not.toContainText(
         "The fillet could not be built with the current radius and selected edges",
       )

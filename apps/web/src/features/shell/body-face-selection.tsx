@@ -119,7 +119,6 @@ export function BodyFacePickingSync({
           }
         : null,
     )
-    return () => onContextChange?.(null)
   }, [
     enabled,
     evidence,
@@ -129,6 +128,10 @@ export function BodyFacePickingSync({
     target.outputRole,
     selectedIds,
   ])
+  // Withdraw the context only when this picker unmounts or changes owner. A cleanup on every
+  // publish would store null and then the equal context again, so an equal republish would never
+  // be a no-op upstream.
+  useEffect(() => () => onContextChange?.(null), [featureId, onContextChange])
   useEffect(() => {
     if (!request || lastSequence.current === request.sequence) return
     lastSequence.current = request.sequence
