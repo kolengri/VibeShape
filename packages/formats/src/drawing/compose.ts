@@ -73,6 +73,8 @@ export function composeDrawingSheet(input: ComposeDrawingInput): DrawingSheet {
     measureAnnotations(projection, orthographic, factor, annotate),
   )
   const factor = layout.scale.numerator / layout.scale.denominator
+  // One final pass per placed view feeds dimensions, labels and the omitted count.
+  const annotated = layout.placements.map((placement) => annotate(placement, factor))
   const scaleText = `${layout.scale.numerator}:${layout.scale.denominator}`
   const groups: SheetGroup[] = [
     {
@@ -97,11 +99,11 @@ export function composeDrawingSheet(input: ComposeDrawingInput): DrawingSheet {
     })),
     {
       id: "dimensions",
-      primitives: layout.placements.flatMap((placement) => annotate(placement, factor).dimensions),
+      primitives: annotated.flatMap(({ dimensions }) => dimensions),
     },
     {
       id: "labels",
-      primitives: layout.placements.map((placement) => annotate(placement, factor).label),
+      primitives: annotated.map(({ label }) => label),
     },
     {
       id: "title-block",
@@ -117,10 +119,7 @@ export function composeDrawingSheet(input: ComposeDrawingInput): DrawingSheet {
     width,
     height,
     title: settings.titleBlock.title,
-    omittedCallouts: layout.placements.reduce(
-      (sum, placement) => sum + annotate(placement, factor).omitted,
-      0,
-    ),
+    omittedCallouts: annotated.reduce((sum, { omitted }) => sum + omitted, 0),
     scale: layout.scale,
     fits: layout.fits,
     views: layout.placements.map(({ projection, rect }) => ({ view: projection.view, ...rect })),

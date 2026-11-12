@@ -373,3 +373,52 @@ describe("callout labels and hidden lines", () => {
     expect(calloutRoutes(sheet).map(({ text }) => text)).toEqual(["Ø6"])
   })
 })
+
+describe("callouts for many repeated holes", () => {
+  it("groups 20,000 equal holes into one callout beside the distinct ones", () => {
+    const side = 1000
+    const corners: [number, number][] = [
+      [0, 0],
+      [side, 0],
+      [side, side],
+      [0, side],
+    ]
+    const circle = (center: [number, number], radius: number) => ({
+      visibility: "visible" as const,
+      edgeClass: "sharp" as const,
+      curve: { kind: "circle" as const, center, radius },
+    })
+    const holes = Array.from({ length: 20_000 }, (_, index) =>
+      circle([5 + (index % 140) * 7, 5 + Math.floor(index / 140) * 7], 2),
+    )
+    const bosses = [circle([990, 990], 8), circle([960, 990], 6), circle([930, 990], 5)]
+    const edges: DrawingViewProjection["edges"] = [
+      ...corners.map((start, index) => ({
+        visibility: "visible" as const,
+        edgeClass: "sharp" as const,
+        curve: { kind: "line" as const, start, end: corners[(index + 1) % 4] ?? start },
+      })),
+      ...holes,
+      ...bosses,
+    ]
+    const sheet = composeDrawingSheet({
+      projection: {
+        chordTolerance: DRAWING_CHORD_TOLERANCE_MM,
+        bodyCount: 1,
+        views: [{ view: "top", bounds: { min: [0, 0], max: [side, side] }, edges }],
+      },
+      settings: drawingSettingsSchema.parse({ views: ["top"] }),
+      copy,
+      documentTitle: "Perforated plate",
+    })
+    const labels = texts(sheet)
+      .filter((label) => label.text.includes("Ø"))
+      .map((label) => label.text)
+    expect(labels.length + sheet.omittedCallouts).toBe(4)
+    // One group per diameter: the repeated hole once with its count, each boss on its own.
+    expect(labels).toContain("20000× Ø4")
+    expect(new Set(labels).size).toBe(labels.length)
+    expect(labels.every((label) => ["20000× Ø4", "Ø16", "Ø12", "Ø10"].includes(label))).toBe(true)
+    expect(overlappingTexts(sheet)).toEqual([])
+  })
+})

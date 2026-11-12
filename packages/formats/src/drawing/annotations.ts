@@ -1,6 +1,6 @@
 import type { DrawingSettings } from "@vibeshape/domain/drawing"
 import type { DrawingCurve } from "@vibeshape/protocol"
-import { type SheetSegment, segmentCrossesBox, viewLines } from "./callout-obstacles"
+import { type SheetSegment, segmentCrossesBox, viewObstacles } from "./callout-obstacles"
 import type { ViewPlacement } from "./layout"
 import { type SheetPoint, type SheetPrimitive, sheetNumber } from "./sheet"
 import { primitiveBox, textWidthMm } from "./text-metrics"
@@ -135,36 +135,18 @@ export function diameterCallouts(
   obstacles: readonly SheetPrimitive[],
 ): PlacedCallouts {
   const { units, hiddenLines } = settings
-  const drawnCircles = placement.projection.edges.flatMap((edge) =>
-    (hiddenLines || edge.visibility === "visible") && edge.curve.kind === "circle"
-      ? [{ visible: edge.visibility === "visible", circle: edge.curve }]
-      : [],
-  )
-  const circles = drawnCircles.flatMap(({ visible, circle }) => (visible ? [circle] : []))
-  const groups = new Map<string, Circle[]>()
-  for (const circle of uniqueCircles(circles)) {
-    const key = sheetNumber(circle.radius, 6)
-    groups.set(key, [...(groups.get(key) ?? []), circle])
-  }
-  const ranked = [...groups.values()]
-    .map((members) => members.sort(byCenter))
-    .sort((left, right) => (right[0]?.radius ?? 0) - (left[0]?.radius ?? 0))
+  const ranked = diameterGroups(placement.projection)
   const chosen = ranked
     .slice(0, MAX_DIAMETER_CALLOUTS)
     .sort((left, right) => compareAnchors(left[0], right[0]))
+  const drawn = viewObstacles(placement.projection, hiddenLines)
   const avoid: Avoid = {
     boxes: obstacles.map(primitiveBox),
     texts: obstacles.filter(({ kind }) => kind === "text").map(primitiveBox),
     leaders: [],
-    rings: uniqueCircles(drawnCircles.map(({ circle }) => circle)).map(
-      (circle): Ring => ({
-        center: toSheet(placement, factor, circle.center),
-        radius: circle.radius * factor,
-      }),
-    ),
-    lines: (box) => {
+    curves: (box) => {
       const [x, y] = placement.origin
-      return viewLines(placement.projection, hiddenLines).crosses([
+      return drawn.crosses([
         (box[0] - x) / factor,
         (box[1] - y) / factor,
         (box[2] - x) / factor,
@@ -188,6 +170,32 @@ export function diameterCallouts(
   return { primitives, omitted }
 }
 
+const diameterGroupCache = new WeakMap<ViewPlacement["projection"], Circle[][]>()
+
+/**
+ * Distinct visible full circles of a view grouped by diameter, largest first, members by centre.
+ * The grouping depends on the projection only, so scale attempts reuse it.
+ */
+function diameterGroups(view: ViewPlacement["projection"]): Circle[][] {
+  const cached = diameterGroupCache.get(view)
+  if (cached) return cached
+  const circles = view.edges.flatMap((edge) =>
+    edge.visibility === "visible" && edge.curve.kind === "circle" ? [edge.curve] : [],
+  )
+  const groups = new Map<string, Circle[]>()
+  for (const circle of uniqueCircles(circles)) {
+    const key = sheetNumber(circle.radius, 6)
+    const members = groups.get(key)
+    if (members) members.push(circle)
+    else groups.set(key, [circle])
+  }
+  const ranked = [...groups.values()]
+    .map((members) => members.sort(byCenter))
+    .sort((left, right) => (right[0]?.radius ?? 0) - (left[0]?.radius ?? 0))
+  diameterGroupCache.set(view, ranked)
+  return ranked
+}
+
 function toSheet(placement: ViewPlacement, factor: number, point: SheetPoint): SheetPoint {
   return [placement.origin[0] + point[0] * factor, placement.origin[1] + point[1] * factor]
 }
@@ -197,15 +205,13 @@ function compareAnchors(left: Circle | undefined, right: Circle | undefined) {
   return byCenter(left, right) || left.radius - right.radius
 }
 
-type Ring = Readonly<{ center: SheetPoint; radius: number }>
 /** What a callout must keep clear of; the arrays grow as callouts are placed. */
 type Avoid = Readonly<{
   boxes: Box[]
   texts: Box[]
   leaders: SheetSegment[]
-  rings: readonly Ring[]
-  /** True when a visible line piece of the view touches the sheet box. */
-  lines: (box: Box) => boolean
+  /** True when a drawn curve of the view (circle or line piece) touches the sheet box. */
+  curves: (box: Box) => boolean
 }>
 type Callout = ReturnType<typeof calloutAt>
 
@@ -232,12 +238,11 @@ function readable(candidate: Callout, avoid: Avoid) {
   const clearance = grow(candidate.textBox, CALLOUT_GAP_MM)
   return (
     candidate.boxes.every((box) => avoid.boxes.every((other) => !boxesOverlap(box, other))) &&
-    avoid.rings.every((ring) => !boxCrossesRing(candidate.textBox, ring)) &&
     avoid.leaders.every(([start, end]) => !segmentCrossesBox(start, end, clearance)) &&
     candidate.leaders.every(([start, end]) =>
       avoid.texts.every((box) => !segmentCrossesBox(start, end, grow(box, CALLOUT_GAP_MM))),
     ) &&
-    !avoid.lines(clearance)
+    !avoid.curves(clearance)
   )
 }
 
@@ -268,20 +273,6 @@ function calloutAt(
       [elbow, end],
     ] as SheetSegment[],
   }
-}
-
-/** True when the circle's curve passes through the box (expanded by the gap), not merely around it. */
-function boxCrossesRing(box: Box, ring: Ring) {
-  const [x0, y0, x1, y1] = [
-    box[0] - CALLOUT_GAP_MM,
-    box[1] - CALLOUT_GAP_MM,
-    box[2] + CALLOUT_GAP_MM,
-    box[3] + CALLOUT_GAP_MM,
-  ]
-  const [cx, cy] = ring.center
-  const nearest = Math.hypot(Math.max(x0 - cx, 0, cx - x1), Math.max(y0 - cy, 0, cy - y1))
-  const farthest = Math.hypot(Math.max(cx - x0, x1 - cx), Math.max(cy - y0, y1 - cy))
-  return nearest <= ring.radius && ring.radius <= farthest
 }
 
 function boxesOverlap(left: Box, right: Box) {

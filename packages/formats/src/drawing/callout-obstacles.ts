@@ -29,14 +29,31 @@ const GRID_CELLS = 32
 /** Arc chords deviate from the arc by at most this share of the view's larger extent. */
 const ARC_SAGITTA_SHARE = 1e-3
 
+type Obstacle =
+  | Readonly<{ kind: "segment"; segment: SheetSegment }>
+  | Readonly<{ kind: "circle"; center: SheetPoint; radius: number }>
+
+/** True when the circle's curve passes through `box`, not merely around or inside it. */
+function boxCrossesCircle(box: SheetBox, center: SheetPoint, radius: number) {
+  const [cx, cy] = center
+  const nearest = Math.hypot(
+    Math.max(box[0] - cx, 0, cx - box[2]),
+    Math.max(box[1] - cy, 0, cy - box[3]),
+  )
+  const farthest = Math.hypot(
+    Math.max(cx - box[0], box[2] - cx),
+    Math.max(cy - box[1], box[3] - cy),
+  )
+  return nearest <= radius && radius <= farthest
+}
+
 /**
- * The drawn straight pieces of a view (lines, polyline segments, arc chords; hidden ones only when
- * hidden lines are drawn) in projection coordinates, bucketed in a uniform grid over the view
- * bounds so label boxes test only nearby pieces. Full circles are excluded: callout placement
- * tests them exactly as rings.
+ * The drawn curves of a view (lines, polyline segments, arc chords and full circles; hidden ones
+ * only when hidden lines are drawn) in projection coordinates, bucketed in a uniform grid over the
+ * view bounds so a label box tests only nearby curves, however many holes the view has.
  */
-class ViewLines {
-  readonly #segments: SheetSegment[] = []
+class ViewObstacles {
+  readonly #items: Obstacle[] = []
   readonly #cells = new Map<number, number[]>()
   readonly #stamps: number[] = []
   readonly #origin: SheetPoint
@@ -48,35 +65,40 @@ class ViewLines {
     const span = Math.max(max[0] - min[0], max[1] - min[1], 1e-6)
     this.#origin = [min[0], min[1]]
     this.#cell = span / GRID_CELLS
-    for (const edge of view.edges)
-      if (hidden || edge.visibility === "visible")
-        for (const segment of curveSegments(edge.curve, span * ARC_SAGITTA_SHARE))
-          this.#add(segment)
+    for (const edge of view.edges) {
+      if (!hidden && edge.visibility !== "visible") continue
+      const { curve } = edge
+      if (curve.kind === "circle") {
+        const [cx, cy] = curve.center
+        const r = curve.radius
+        this.#add({ kind: "circle", center: curve.center, radius: r }, [
+          cx - r,
+          cy - r,
+          cx + r,
+          cy + r,
+        ])
+      } else
+        for (const segment of curveSegments(curve, span * ARC_SAGITTA_SHARE))
+          this.#add({ kind: "segment", segment }, segmentBounds(segment))
+    }
   }
 
-  /** True when a visible piece touches `box` (projection coordinates). */
+  /** True when a drawn curve touches `box` (projection coordinates). */
   crosses(box: SheetBox) {
     const stamp = ++this.#stamp
     for (const key of this.#keys(box))
       for (const index of this.#cells.get(key) ?? []) {
         if (this.#stamps[index] === stamp) continue
         this.#stamps[index] = stamp
-        const segment = this.#segments[index]
-        if (segment && segmentCrossesBox(segment[0], segment[1], box)) return true
+        const item = this.#items[index]
+        if (item && touches(item, box)) return true
       }
     return false
   }
 
-  #add(segment: SheetSegment) {
-    const index = this.#segments.push(segment) - 1
-    const [start, end] = segment
-    const box: SheetBox = [
-      Math.min(start[0], end[0]),
-      Math.min(start[1], end[1]),
-      Math.max(start[0], end[0]),
-      Math.max(start[1], end[1]),
-    ]
-    for (const key of this.#keys(box)) {
+  #add(item: Obstacle, bounds: SheetBox) {
+    const index = this.#items.push(item) - 1
+    for (const key of this.#keys(bounds)) {
       const bucket = this.#cells.get(key)
       if (bucket) bucket.push(index)
       else this.#cells.set(key, [index])
@@ -94,13 +116,30 @@ class ViewLines {
   }
 }
 
-function curveSegments(curve: DrawingViewProjection["edges"][number]["curve"], sagitta: number) {
+function touches(item: Obstacle, box: SheetBox) {
+  return item.kind === "segment"
+    ? segmentCrossesBox(item.segment[0], item.segment[1], box)
+    : boxCrossesCircle(box, item.center, item.radius)
+}
+
+function segmentBounds([start, end]: SheetSegment): SheetBox {
+  return [
+    Math.min(start[0], end[0]),
+    Math.min(start[1], end[1]),
+    Math.max(start[0], end[0]),
+    Math.max(start[1], end[1]),
+  ]
+}
+
+function curveSegments(
+  curve: Exclude<DrawingViewProjection["edges"][number]["curve"], { kind: "circle" }>,
+  sagitta: number,
+) {
   if (curve.kind === "line") return [[curve.start, curve.end] as SheetSegment]
   if (curve.kind === "polyline")
     return curve.points
       .slice(1)
       .map((end, index): SheetSegment => [curve.points[index] ?? end, end])
-  if (curve.kind === "circle") return []
   const step = curve.radius <= sagitta ? Math.PI / 2 : 2 * Math.acos(1 - sagitta / curve.radius)
   const count = Math.max(1, Math.ceil((curve.endAngle - curve.startAngle) / step))
   const at = (index: number): SheetPoint => {
@@ -113,15 +152,15 @@ function curveSegments(curve: DrawingViewProjection["edges"][number]["curve"], s
   return Array.from({ length: count }, (_, index): SheetSegment => [at(index), at(index + 1)])
 }
 
-const cache = new WeakMap<DrawingViewProjection, Map<boolean, ViewLines>>()
+const cache = new WeakMap<DrawingViewProjection, Map<boolean, ViewObstacles>>()
 
-/** Drawn line pieces of a view, built once per projection and reused across scale attempts. */
-export function viewLines(view: DrawingViewProjection, hidden: boolean) {
-  const built = cache.get(view) ?? new Map<boolean, ViewLines>()
+/** Drawn curves of a view, indexed once per projection and reused across scale attempts. */
+export function viewObstacles(view: DrawingViewProjection, hidden: boolean) {
+  const built = cache.get(view) ?? new Map<boolean, ViewObstacles>()
   cache.set(view, built)
   const cached = built.get(hidden)
   if (cached) return cached
-  const lines = new ViewLines(view, hidden)
-  built.set(hidden, lines)
-  return lines
+  const obstacles = new ViewObstacles(view, hidden)
+  built.set(hidden, obstacles)
+  return obstacles
 }
