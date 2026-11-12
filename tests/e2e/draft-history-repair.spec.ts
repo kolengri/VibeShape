@@ -111,7 +111,5 @@ test("repairs a Draft whose target body and neutral face were deleted onto anoth
     origin: [0, 0, 0],
     normal: [0, 0, 1],
   })
-  expect(
-    repaired.schemaVersion === 5 || repaired.schemaVersion === 6 ? repaired.repairIntents : [],
-  ).toEqual([])
+  expect("repairIntents" in repaired ? repaired.repairIntents : []).toEqual([])
 })
