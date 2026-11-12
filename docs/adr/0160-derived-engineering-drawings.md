@@ -72,8 +72,13 @@ facing the queried segment, so views of many circles and no sampled curves never
 Circles and arcs are also keyed by centre for the concentric test. The work is proportional to the
 covering pieces actually within tolerance; where many sampled curves run within tolerance of each
 other in one spot those pairs are all genuine candidates, and the 50,000-edge view budget bounds
-them. Unit tests bound leaf entries scanned, pieces handed to clipping and chord builds by counters,
-not wall time.
+them. Concentric families are the other exception: thousands of ring bands crossing all four
+quadrants of a node cannot be separated by splitting, so they share one leaf and every query there
+scans each of them (a band check per ring, chords only for the rings it meets), bounded by the
+same edge budget; looking such families up by centre and radius would remove that scan if
+turned-part views ever need it. Unit tests bound leaf entries scanned, pieces handed to clipping
+and chord builds by counters, not wall time. Circles and arcs are gated at the coverage margin
+plus the chord sagitta bound, because their chords may sit that far inside the exact curve.
 Output contains only coordinates, never OCCT
 indices.
 

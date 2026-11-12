@@ -316,7 +316,12 @@ import {
   surfaceTextureToolNames,
 } from "./surface-texture-tools"
 
-export { type LocalFailure, localFailure, localFailureSchema } from "./local-failure"
+export {
+  LOCAL_FAILURE_MESSAGE_MAX_LENGTH,
+  type LocalFailure,
+  localFailure,
+  localFailureSchema,
+} from "./local-failure"
 
 function resultOf<Schema extends z.ZodType>(schema: Schema) {
   return z.discriminatedUnion("ok", [

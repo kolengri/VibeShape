@@ -1,4 +1,5 @@
 import type { PrepareDrawingExportArguments } from "@vibeshape/automation-api/drawing-export-arguments"
+import { LOCAL_FAILURE_MESSAGE_MAX_LENGTH } from "@vibeshape/automation-api/local-tools"
 import { DRAWING_VIEWS } from "@vibeshape/domain/drawing"
 import { writeDrawingFile } from "@vibeshape/formats/drawing"
 import type { ActiveDocumentDrawingResult } from "../document/document-drawing"
@@ -14,7 +15,7 @@ type DrawingProjector = (
 function projectionFailure(
   diagnostic: Extract<ActiveDocumentDrawingResult, { ok: false }>["diagnostic"],
 ) {
-  const message = diagnostic.message.slice(0, 512)
+  const message = diagnostic.message.slice(0, LOCAL_FAILURE_MESSAGE_MAX_LENGTH)
   if (diagnostic.sourceCode === "stale-revision")
     return new BinaryExportPreparationError("stale-revision", message, true)
   if (diagnostic.sourceCode === "rebuild-failed")

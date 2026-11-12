@@ -327,4 +327,49 @@ describe("callout labels and hidden lines", () => {
     ).toEqual([])
     expect(calloutRoutes(sheet).filter(({ routed }) => !routed)).toEqual([])
   })
+
+  it("keeps labels off hidden circles when hidden lines are drawn", () => {
+    const projection = topView([[20, 15, 3]])
+    const [view] = projection.views
+    if (!view) throw new Error("Expected the top view.")
+    // A hidden ring centred where the first up-right label would sit.
+    const ring = {
+      visibility: "hidden" as const,
+      edgeClass: "sharp" as const,
+      curve: { kind: "circle" as const, center: [36, 23.5] as [number, number], radius: 1.5 },
+    }
+    const sheet = composeDrawingSheet({
+      projection: { ...projection, views: [{ ...view, edges: [...view.edges, ring] }] },
+      settings: {
+        ...drawingSettingsSchema.parse({ views: ["top"] }),
+        scale: { mode: "explicit", numerator: 1, denominator: 1 },
+      },
+      copy,
+      documentTitle: "Callouts",
+    })
+    const hidden = primitivesOf(sheet, ["view-top"]).filter(
+      (item): item is Extract<SheetPrimitive, { kind: "circle" }> =>
+        item.kind === "circle" && item.layer === "hidden",
+    )
+    expect(hidden).toHaveLength(1)
+    const crossesRing = (box: SheetBox, circle: (typeof hidden)[number]) => {
+      const [cx, cy] = circle.center
+      const nearest = Math.hypot(
+        Math.max(box[0] - cx, 0, cx - box[2]),
+        Math.max(box[1] - cy, 0, cy - box[3]),
+      )
+      const farthest = Math.hypot(
+        Math.max(cx - box[0], box[2] - cx),
+        Math.max(cy - box[1], box[3] - cy),
+      )
+      return nearest <= circle.radius && circle.radius <= farthest
+    }
+    expect(
+      texts(sheet)
+        .filter((label) => label.text.includes("Ø"))
+        .filter((label) => hidden.some((circle) => crossesRing(primitiveBox(label), circle)))
+        .map((label) => label.text),
+    ).toEqual([])
+    expect(calloutRoutes(sheet).map(({ text }) => text)).toEqual(["Ø6"])
+  })
 })

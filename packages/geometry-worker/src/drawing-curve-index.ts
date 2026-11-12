@@ -147,12 +147,18 @@ export class CurveIndex {
   #stamp = 0
 
   readonly margin: number
+  /**
+   * Reach of a circle or arc: chords sit up to one sagitta (a tenth of the coverage radius) inside
+   * the exact curve, so a piece within `margin` of a chord can be that much farther from the curve.
+   */
+  readonly #roundReach: number
   readonly #chords: ChordCache
   readonly #stats: CoverageStats | undefined
 
   constructor(extent: Box, options: IndexOptions) {
     this.margin = options.margin
     this.#chords = options.chords
+    this.#roundReach = options.margin + options.chords.shape.radius / 10
     this.#stats = options.stats
     const side = Math.max(extent[2] - extent[0], extent[3] - extent[1], this.margin)
     this.#root = quadNode([extent[0], extent[1], extent[0] + side, extent[1] + side], 0)
@@ -181,8 +187,8 @@ export class CurveIndex {
     const found: Chord[] = []
     this.#near(start, end, (entry) => {
       if (entry.kind === "segment") found.push([entry.segment.start, entry.segment.end])
-      else if (bandReaches(entry.round, start, end, this.margin))
-        for (const chord of this.#chords.near(entry.round, start, end, this.margin))
+      else if (bandReaches(entry.round, start, end, this.#roundReach))
+        for (const chord of this.#chords.near(entry.round, start, end, this.#roundReach))
           found.push(chord)
     })
     return found
@@ -222,7 +228,11 @@ export class CurveIndex {
     else this.#rounds.set(key, [round])
     this.#insert(
       this.#root,
-      this.#entries.push({ kind: "round", round, bounds: grow(roundBox(round), this.margin) }) - 1,
+      this.#entries.push({
+        kind: "round",
+        round,
+        bounds: grow(roundBox(round), this.#roundReach),
+      }) - 1,
     )
   }
 
@@ -244,10 +254,9 @@ export class CurveIndex {
   #reaches(node: QuadNode, index: number) {
     const entry = this.#entries[index]
     if (!entry || !boxesTouch(entry.bounds, node.box)) return false
-    const near = grow(node.box, this.margin)
     if (entry.kind === "segment")
-      return segmentTouchesBox(entry.segment.start, entry.segment.end, near)
-    return boxMeetsCircle(near, entry.round.center, entry.round.radius)
+      return segmentTouchesBox(entry.segment.start, entry.segment.end, grow(node.box, this.margin))
+    return boxMeetsCircle(grow(node.box, this.#roundReach), entry.round.center, entry.round.radius)
   }
 
   #insert(node: QuadNode, index: number) {

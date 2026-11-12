@@ -1,3 +1,4 @@
+import { LOCAL_FAILURE_MESSAGE_MAX_LENGTH } from "@vibeshape/automation-api/local-tools"
 import {
   BinaryExportPreparationError,
   type ModelFormat,
@@ -19,7 +20,8 @@ type ModelExportResult =
  * retryable stale revision, and anything else stays export-failed with the source's retry flag.
  */
 export function modelExportFailure(diagnostic: ExportDiagnostic) {
-  const { message } = diagnostic
+  // Worker messages may exceed the MCP diagnostic limit; an overlong one would fail validation.
+  const message = diagnostic.message.slice(0, LOCAL_FAILURE_MESSAGE_MAX_LENGTH)
   if (diagnostic.code === "rebuild-failed" || diagnostic.sourceCode === "rebuild-failed")
     return { code: "rebuild-failed", message, retryable: false }
   if (diagnostic.code === "stale-revision" || diagnostic.sourceCode === "stale-revision")

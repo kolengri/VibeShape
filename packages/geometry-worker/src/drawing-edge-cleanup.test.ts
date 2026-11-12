@@ -304,10 +304,23 @@ describe("hidden edge coverage", () => {
       })
       return edge("hidden", { kind: "polyline", points })
     })
+    // Visible radial edges query the kept-visible index, hidden curves the visible index; both
+    // hold the rings, so one shared chord cache still chords each ring at most once.
+    const spokes = [0, 1, 2, 3].map((quarter) => {
+      const angle = (quarter * Math.PI) / 2 + 0.3
+      const points = Array.from({ length: 31 }, (_, index): Point => {
+        const along = 100 + index * 2
+        return [
+          150 + along * Math.cos(angle) + 0.4 * Math.sin(index),
+          150 + along * Math.sin(angle) + 0.4 * Math.cos(index),
+        ]
+      })
+      return edge("visible", { kind: "polyline", points })
+    })
     const stats = coverageStats()
-    const result = suppressCoincidentEdges([...rings, ...hidden], stats)
+    const result = suppressCoincidentEdges([...rings, ...spokes, ...hidden], stats)
     expect(hiddenOf(result).length).toBeGreaterThanOrEqual(hidden.length)
-    // One shared chord cache: a ring is chorded once, however many indexes hold it.
+    expect(stats.chordBuilds).toBeGreaterThan(0)
     expect(stats.chordBuilds).toBeLessThanOrEqual(rings.length)
     const segments = hidden.length * 19
     expect(stats.scannedEntries).toBeLessThan(segments * 32)

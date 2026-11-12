@@ -264,6 +264,21 @@ function struckValues(sheet: DrawingSheet) {
   )
 }
 
+/** Dimension values overlapping an arrowhead, such as an outside value on its own arrow. */
+function valuesOnArrows(sheet: DrawingSheet) {
+  const primitives = sheet.groups.find(({ id }) => id === "dimensions")?.primitives ?? []
+  const arrows = primitives.flatMap((item) => (item.kind === "arrow" ? [primitiveBox(item)] : []))
+  return primitives.flatMap((item) => {
+    if (item.kind !== "text") return []
+    const box = primitiveBox(item)
+    return arrows.some(
+      (arrow) => box[0] < arrow[2] && arrow[0] < box[2] && box[1] < arrow[3] && arrow[1] < box[3],
+    )
+      ? [item.text]
+      : []
+  })
+}
+
 describe("dimension values on thin parts", () => {
   const parts = [
     ["a PCB", 100, 80, 1.6],
@@ -274,6 +289,7 @@ describe("dimension values on thin parts", () => {
     for (const sheetSize of ["iso-a4", "iso-a3"] as const) {
       const sheet = compose(boxProjection(x, y, z), { sheetSize })
       expect({ sheetSize, struck: struckValues(sheet) }).toEqual({ sheetSize, struck: [] })
+      expect({ sheetSize, onArrows: valuesOnArrows(sheet) }).toEqual({ sheetSize, onArrows: [] })
       const thickness = sheet.groups
         .find(({ id }) => id === "dimensions")
         ?.primitives.filter((item) => item.kind === "text" && item.text === String(z))

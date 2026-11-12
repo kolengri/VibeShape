@@ -35,6 +35,26 @@ describe("model export failures over MCP", () => {
     expect(modelExportFailure(diagnostic)).toEqual({ ...expected, message: diagnostic.message })
   })
 
+  it("cuts a long worker message to the MCP limit instead of failing validation", async () => {
+    const diagnostic = { ...rebuildFailed, message: "x".repeat(1024) }
+    expect(modelExportFailure(diagnostic).message).toHaveLength(512)
+    const session = createBinaryExportSession({
+      documentId,
+      currentRevision: () => 4,
+      isActive: () => true,
+      prepare: vi.fn(async (format, revision) =>
+        preparedModelExport({ ok: false, diagnostic }, documentId, revision, format),
+      ),
+      hash: vi.fn().mockResolvedValue("a".repeat(64)),
+    })
+    expect(
+      await session.execute(actor, {
+        tool: "prepare_model_export",
+        arguments: { revision: 4, format: "step" },
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "rebuild-failed", retryable: false } })
+  })
+
   it("reports a failed rebuild from prepare_model_export as final", async () => {
     const session = createBinaryExportSession({
       documentId,
