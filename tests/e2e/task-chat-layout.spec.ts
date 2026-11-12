@@ -67,6 +67,11 @@ for (const width of [512, 800, 1024, 1440]) {
     const form = page.getByRole("form", { name: "Create box", exact: true })
     const draft = form.getByRole("combobox", { name: "Width", exact: true })
     await draft.fill("77")
+    // A transient preview card changes the task height; measure the settled layout.
+    await expect(page.getByRole("region", { name: "3D viewport", exact: true })).toHaveAttribute(
+      "data-preview-status",
+      "ready",
+    )
     const canvas = page.locator(".workspace-viewport canvas").first()
     const originalCanvas = await canvas.elementHandle()
     const regions = [
@@ -330,7 +335,8 @@ for (const theme of ["light", "dark"]) {
           .locator(".workspace-panel--task")
           .evaluate((element) => element.getBoundingClientRect().height),
       )
-      .toBe(450)
+      // Half of the 690 px available workspace (design guidelines, compact task sheet).
+      .toBe(345)
     headerBounds = await header.boundingBox()
     await body.evaluate((element) => {
       element.scrollTop = element.scrollHeight
@@ -457,7 +463,7 @@ test("keeps symmetric History spacing and a separate scrollbar lane below operat
         if (!rail || !row) throw new Error("History track and operation must be measurable")
         return { top: row.y - rail.y, bottom: rail.y + rail.height - (row.y + row.height) }
       })
-      .toEqual({ top: 8, bottom: 8 })
+      .toEqual({ top: 4, bottom: 4 })
     const control = history.getByRole("treeitem", { name: "Box 1", exact: true })
     if (!detailed) {
       const bounds = await control.boundingBox()

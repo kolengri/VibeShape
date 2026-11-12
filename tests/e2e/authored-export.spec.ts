@@ -20,8 +20,7 @@ async function createBox(page: Page, values: Record<string, string>) {
   ).toBeVisible()
 }
 async function renamePart(page: Page, from: string, to: string) {
-  // The previous row's restored-focus tooltip can cover this action, so activate it by keyboard.
-  await page.getByRole("button", { name: `Rename part ${from}`, exact: true }).press("Enter")
+  await page.getByRole("button", { name: `Rename part ${from}`, exact: true }).click()
   const dialog = page.getByRole("dialog", { name: "Rename item", exact: true })
   await dialog.getByRole("textbox", { name: "Name", exact: true }).fill(to)
   await dialog.getByRole("button", { name: "Rename", exact: true }).click()
@@ -109,6 +108,29 @@ test("exports a hidden selected part and a named positioned assembly without cha
     "Origin Z": "5 mm",
   })
   await renamePart(page, "Box 1", "Housing")
+  // Focus returns to the renamed row's action, whose hint opens over the next row's action.
+  // Tooltips are hints only, so the next Rename must still receive the pointer click.
+  const restoredHint = page.getByRole("tooltip", { name: "Rename item", exact: true })
+  await expect(restoredHint).toBeVisible()
+  const nextRename = page.getByRole("button", { name: "Rename part Box 2", exact: true })
+  const [hint, next] = await Promise.all([restoredHint.boundingBox(), nextRename.boundingBox()])
+  if (!hint || !next) throw new Error("Expected the restored hint and the next Rename action.")
+  expect(
+    hint.x < next.x + next.width &&
+      next.x < hint.x + hint.width &&
+      hint.y < next.y + next.height &&
+      next.y < hint.y + hint.height,
+  ).toBe(true)
+  expect(
+    await nextRename.evaluate((element) => {
+      const bounds = element.getBoundingClientRect()
+      const hit = element.ownerDocument.elementFromPoint(
+        bounds.x + bounds.width / 2,
+        bounds.y + bounds.height / 2,
+      )
+      return hit !== null && element.contains(hit)
+    }),
+  ).toBe(true)
   await renamePart(page, "Box 2", "Insert")
   await page.getByRole("button", { name: "Hide part Insert", exact: true }).click()
   await expect(page.getByRole("button", { name: "Show part Insert", exact: true })).toBeVisible()

@@ -122,11 +122,8 @@ test("retains the canvas and hidden chat while explicitly attaching the current 
   await expect(settings).toBeHidden()
   const message = panel.getByRole("textbox", { name: "Message", exact: true })
   await expect(message).toBeEnabled()
-  await expect
-    .poll(async () => (await canvas.boundingBox())?.width)
-    .toBeLessThan(originalBounds.width)
-  const openBounds = await canvas.boundingBox()
-  if (!openBounds) throw new Error("The viewport must remain measurable beside chat.")
+  // Chat overlays the full-size viewport; opening it must not resize or shift the canvas.
+  expect(await canvas.boundingBox()).toEqual(originalBounds)
   await message.fill("Inspect the highlighted corner")
   await message.evaluate((element) => {
     const browser = element.ownerDocument.defaultView
@@ -153,7 +150,7 @@ test("retains the canvas and hidden chat while explicitly attaching the current 
   await page.getByRole("button", { name: "AI chat", exact: true }).click()
   await expect(message).toHaveValue("Inspect the highlighted corner")
   await expect(thumbnail).toHaveAttribute("src", first ?? "")
-  expect(await canvas.boundingBox()).toEqual(openBounds)
+  expect(await canvas.boundingBox()).toEqual(originalBounds)
   expect(
     await canvas.evaluate(
       (element) => element === Reflect.get(globalThis, "retainedViewportCanvas"),

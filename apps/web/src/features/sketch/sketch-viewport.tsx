@@ -38,6 +38,7 @@ import {
   findSketchCurvesCrossedBySegment,
   inferSketchPoint,
   isReferenceSketchDimension,
+  isSketchExternalModelReference,
   type LinearSketchPatternDefinition,
   linearPatternSketchEntities,
   linearSketchPatternTransforms,
@@ -45,7 +46,6 @@ import {
   MAX_SKETCH_PATTERN_PREVIEW_INSTANCES,
   MIN_REGULAR_POLYGON_SIDES,
   moveSketchPoint,
-  isSketchExternalModelReference,
   projectedExternalSketchEntities,
   projectPointToSketchEllipse,
   type RegularPolygonMode,
@@ -241,6 +241,7 @@ import {
   defaultLinearSketchPatternDefinition,
   SketchLinearPatternForm,
 } from "./sketch-linear-pattern-form"
+import { SketchOperationLayer, SketchOperationPanels } from "./sketch-operation-layer"
 import { useSketchPointDimensionVisibility } from "./sketch-point-dimension-visibility"
 import { useSketchCameraProjection, useSketchProjectionStoreApi } from "./sketch-projection-store"
 import {
@@ -10331,22 +10332,24 @@ function SketchDrawingView({
         editorTool={configuration.editorTool}
         selectedEntityCount={configuration.selectedEntityIds.length}
       />
-      <SketchCornerPanel configuration={configuration} />
-      <SketchLinearPatternPanel
-        configuration={configuration}
-        handlers={handlers}
-        value={state.linearPattern}
-      />
-      <SketchCircularPatternPanel
-        configuration={configuration}
-        handlers={handlers}
-        value={state.circularPattern}
-      />
-      <SketchTransformPanel
-        configuration={configuration}
-        handlers={handlers}
-        value={state.transform}
-      />
+      <SketchOperationPanels>
+        <SketchCornerPanel configuration={configuration} />
+        <SketchLinearPatternPanel
+          configuration={configuration}
+          handlers={handlers}
+          value={state.linearPattern}
+        />
+        <SketchCircularPatternPanel
+          configuration={configuration}
+          handlers={handlers}
+          value={state.circularPattern}
+        />
+        <SketchTransformPanel
+          configuration={configuration}
+          handlers={handlers}
+          value={state.transform}
+        />
+      </SketchOperationPanels>
       <SketchPrecisionToolbar
         anchor={sketchSelectionToolbarAnchor(
           configuration.draft,
@@ -13509,39 +13512,41 @@ export function SketchViewport({
   )
 
   return (
-    <section
-      aria-label={presentation.ariaLabel}
-      aria-hidden={interactive ? undefined : true}
-      className={cn(
-        "relative min-h-0 overflow-hidden",
-        overlay ? "absolute inset-0 z-10 bg-transparent" : "bg-viewport-background",
-        !interactive && "pointer-events-none opacity-0",
-      )}
-      data-interactive={interactive ? "true" : "false"}
-      data-overlay={overlay ? "true" : undefined}
-      inert={interactive ? undefined : true}
-    >
-      <StableSketchViewportContent
-        activeSketch={activeSketch}
-        emptyMessage={presentation.emptyMessage}
-        configuration={drawingConfiguration}
-        projectionFrame={state.projectionFrame ?? null}
-        spatial={spatial}
-      />
-      <SketchSolveOverlay
-        active={activeSketch !== null}
-        contextGeometry={externalContextGeometry}
-        contextSketchLabels={contextSketchLabels}
-        degreesOfFreedom={presentation.solve.degreesOfFreedom}
-        profileText={presentation.solve.profileText}
-        status={presentation.solve.statusText}
-      />
-      <SketchViewportChrome
-        state={state}
-        actions={actions}
-        spatial={spatial}
-        plane={activeSketch?.plane ?? null}
-      />
-    </section>
+    <SketchOperationLayer enabled={overlay} interactive={interactive}>
+      <section
+        aria-label={presentation.ariaLabel}
+        aria-hidden={interactive ? undefined : true}
+        className={cn(
+          "relative min-h-0 overflow-hidden",
+          overlay ? "absolute inset-0 z-10 bg-transparent" : "bg-viewport-background",
+          !interactive && "pointer-events-none opacity-0",
+        )}
+        data-interactive={interactive ? "true" : "false"}
+        data-overlay={overlay ? "true" : undefined}
+        inert={interactive ? undefined : true}
+      >
+        <StableSketchViewportContent
+          activeSketch={activeSketch}
+          emptyMessage={presentation.emptyMessage}
+          configuration={drawingConfiguration}
+          projectionFrame={state.projectionFrame ?? null}
+          spatial={spatial}
+        />
+        <SketchSolveOverlay
+          active={activeSketch !== null}
+          contextGeometry={externalContextGeometry}
+          contextSketchLabels={contextSketchLabels}
+          degreesOfFreedom={presentation.solve.degreesOfFreedom}
+          profileText={presentation.solve.profileText}
+          status={presentation.solve.statusText}
+        />
+        <SketchViewportChrome
+          state={state}
+          actions={actions}
+          spatial={spatial}
+          plane={activeSketch?.plane ?? null}
+        />
+      </section>
+    </SketchOperationLayer>
   )
 }

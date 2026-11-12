@@ -51,6 +51,9 @@ test("replaces the number on first click and Tab while retaining units", async (
     .toBe("20")
   await page.keyboard.type("45")
   await expect(width).toHaveValue("45 mm")
+  // Each field's contextual help trigger is its own tab stop before the control (#412).
+  await page.keyboard.press("Tab")
+  await expect(form.getByRole("button", { name: "Help for Depth", exact: true })).toBeFocused()
   await page.keyboard.press("Tab")
   await expect(depth).toBeFocused()
   await expect

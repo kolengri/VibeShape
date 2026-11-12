@@ -103,8 +103,7 @@ test("reports a visibility save failure without moving model browser rows", asyn
 })
 
 async function renameItem(page: Page, trigger: string, name: string) {
-  // The previous row's restored-focus tooltip can cover this action, so activate it by keyboard.
-  await page.getByRole("button", { name: trigger, exact: true }).press("Enter")
+  await page.getByRole("button", { name: trigger, exact: true }).click()
   const dialog = page.getByRole("dialog", { name: "Rename item", exact: true })
   await dialog.getByRole("textbox", { name: "Name", exact: true }).fill(name)
   await dialog.getByRole("button", { name: "Rename", exact: true }).click()

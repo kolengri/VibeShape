@@ -55,12 +55,31 @@ export function historyTrackSegments(
       if (segment) segments.push(segment)
       continue
     }
+    const rows: HistoryTimelineSegment[] = []
     for (let index = group.start; index <= group.end; index++) {
       const row = units[index]?.row
       const item = measurements[index]
       if (row && item)
-        segments.push({ first: row.index, last: row.index, left: item.start, right: item.end })
+        rows.push({ first: row.index, last: row.index, left: item.start, right: item.end })
     }
+    segments.push(...(group.folder ? widenToFolder(rows, group, measurements) : rows))
   }
   return segments
+}
+
+// An expanded folder's header unit precedes its rows, so the boundaries before its first and
+// after its last row are the folder's outer edges; the divider must not land on its actions.
+function widenToFolder(
+  rows: readonly HistoryTimelineSegment[],
+  group: HistoryTrackGroup,
+  measurements: readonly VirtualItem[],
+) {
+  const start = measurements[group.start]?.start
+  const end = measurements[group.end]?.end
+  return rows.map((segment, index) => ({
+    ...segment,
+    left: index === 0 && start !== undefined ? Math.min(segment.left, start) : segment.left,
+    right:
+      index === rows.length - 1 && end !== undefined ? Math.max(segment.right, end) : segment.right,
+  }))
 }

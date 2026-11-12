@@ -34,7 +34,10 @@ test("previews, cancels, rejects missed and tangent planes, splits independent p
   await expect(form.getByRole("combobox", { name: "Plane offset", exact: true })).toHaveValue(
     `${height / 2} mm`,
   )
-  await expect(form.getByText(/two independently owned parts/)).toBeVisible()
+  // The task description is optional help behind the header's help trigger (#412).
+  await form.getByRole("button", { name: "Help for Split part", exact: true }).click()
+  await expect(page.getByRole("dialog").getByText(/two independently owned parts/)).toBeVisible()
+  await page.keyboard.press("Escape")
   await expect(form.getByRole("button", { name: "Apply split", exact: true })).toBeEnabled({
     timeout: 30_000,
   })
@@ -48,12 +51,11 @@ test("previews, cancels, rejects missed and tangent planes, splits independent p
   const offset = form.getByRole("combobox", { name: "Plane offset", exact: true })
   for (const invalid of [`${height + 1} mm`, `${height} mm`]) {
     await offset.fill(invalid)
+    // The viewport points to the task panel, which owns the preview failure details.
     await expect(
-      page.getByText(
-        "The unsaved feature could not be previewed. Adjust its parameters or target.",
-        { exact: true },
-      ),
+      page.getByText("Preview unavailable. Open the task panel for details.", { exact: true }),
     ).toBeVisible({ timeout: 30_000 })
+    await expect(form.getByRole("alert")).toContainText("The preview could not be built.")
     await expect(form.getByRole("button", { name: "Apply split", exact: true })).toBeDisabled()
   }
   await form.getByRole("button", { name: "Use body midpoint", exact: true }).click()

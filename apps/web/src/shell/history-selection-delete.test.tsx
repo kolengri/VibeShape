@@ -127,6 +127,7 @@ describe("History selection keyboard deletion", () => {
     )
     const { TooltipProvider } = await import("@vibeshape/ui/components/tooltip")
     const { authority, rows } = authoredTreeFixture()
+    const itemsDeleted = vi.fn()
     const first = rows[0]
     const last = rows[2]
     if (!first?.record.label || !last?.record.label)
@@ -142,6 +143,7 @@ describe("History selection keyboard deletion", () => {
             rows={rows}
             disabled={false}
             onCommit={vi.fn().mockResolvedValue({ ok: true })}
+            onItemsDeleted={itemsDeleted}
           >
             <div role="tree" aria-label="History">
               {rows.map((row) => (
@@ -168,6 +170,8 @@ describe("History selection keyboard deletion", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Delete selection" }))
     expect(remove).toHaveBeenCalledTimes(1)
     expect(remove).toHaveBeenCalledWith(authority.revision, [first.ref, last.ref], authority.id)
+    // The owner learns exactly which items were removed, for example to close an active sketch.
+    await waitFor(() => expect(itemsDeleted).toHaveBeenCalledWith([first.ref, last.ref]))
   })
 
   it("blocks a subset of multi-output siblings and permits all sibling parts", async () => {

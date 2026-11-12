@@ -116,14 +116,13 @@ async function editAndExtrude(page: Page, sketch: ImportedSketch) {
   await expect(viewport).toHaveAttribute("data-rendered-sketch-profile-count", "1", {
     timeout: 60000,
   })
-  await viewport
-    .getByRole("combobox", { name: "Select saved profile", exact: true })
-    .selectOption({ label: `${sketch.label} · Profile 1` })
+  // Finish sketch retains the edited sketch's closed profile for the next profile feature.
   await page
     .getByRole("toolbar", { name: "Model commands" })
     .getByRole("button", { name: "Extrude", exact: true })
     .click()
   const extrusion = page.getByRole("form", { name: "Extrude profile", exact: true })
+  await expect(extrusion.getByText(`${sketch.label} · Profile 1`, { exact: true })).toBeVisible()
   await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 60000 })
   await extrusion.getByRole("button", { name: "Create extrusion", exact: true }).click()
   await saved(page)
