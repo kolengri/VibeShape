@@ -62,10 +62,14 @@ describe("ResponsiveTaskPanel", () => {
     const input = screen.getByRole<HTMLInputElement>("textbox", { name: "Radius" })
     const scroller = input.closest<HTMLElement>("[data-slot='task-panel-content']")
     if (!scroller) throw new Error("Expected the task field scrollport.")
+    // A short sheet scrolls the whole task window, so a fresh task resets that scroller too.
+    const layout = input.closest<HTMLElement>("[data-slot='task-panel-layout']")
+    if (!layout) throw new Error("Expected the task window scroller.")
     const content = input.closest(".responsive-task-panel__content")
     await user.clear(input)
     await user.type(input, "27 mm")
     scroller.scrollTop = 150
+    layout.scrollTop = 90
     const collapse = screen.getByRole("button", { name: "Collapse task panel" })
     fireEvent.click(collapse)
     expect(document.activeElement).toBe(collapse)
@@ -79,11 +83,13 @@ describe("ResponsiveTaskPanel", () => {
     rerender(panel("cylinder:first", false))
     expect(content).toHaveProperty("hidden", false)
     expect(scroller.scrollTop).toBe(150)
+    expect(layout.scrollTop).toBe(90)
 
     rerender(panel("cylinder:second"))
     expect(content).toHaveProperty("hidden", false)
     expect(screen.getByRole("button", { name: "Collapse task panel" })).toBeTruthy()
     expect(scroller.scrollTop).toBe(0)
+    expect(layout.scrollTop).toBe(0)
     expect(screen.getByRole("textbox", { name: "Radius" })).toBe(input)
     expect(input.value).toBe("27 mm")
   })

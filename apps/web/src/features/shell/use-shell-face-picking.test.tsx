@@ -1,10 +1,12 @@
 import "../../../../../tests/unit/support/dom"
 import { describe, expect, it } from "bun:test"
-import { act, renderHook } from "@testing-library/react"
+import { act, render, renderHook } from "@testing-library/react"
 import { featureIdSchema } from "@vibeshape/domain"
 import { modelBodyTopologyEvidenceSchema } from "@vibeshape/domain/model-body-topology"
+import { useCallback } from "react"
 import type { DocumentControllerState } from "../../document/document-controller"
 import type { ActivePartDesignTool } from "../part-design/part-design-tool"
+import { BodyFacePickingSync } from "./body-face-selection"
 import type { ShellPickingContext } from "./shell-picking"
 import { useShellFacePicking } from "./use-shell-face-picking"
 
@@ -135,5 +137,41 @@ describe("Shell viewport opening selection", () => {
     expect(hook.result.current.request).toBeNull()
     act(() => hook.result.current.viewportContext?.faceIntersectionSelection?.onSelect(picked))
     expect(hook.result.current.request).toMatchObject({ candidateId: "top", sequence: 1 })
+  })
+  it("ignores an equal but newly allocated picking context from a re-rendered task", () => {
+    let renders = 0
+    const state = controller()
+    const selectedIds = ["top"]
+    function Workspace({ source }: { source: typeof evidence }) {
+      renders += 1
+      const picking = useShellFacePicking(state, tool, [])
+      const store = picking.onContextChange
+      // Bounded so a regression fails the assertion instead of looping the runner.
+      const publish = useCallback(
+        (next: ShellPickingContext | null) => {
+          if (renders < 25) store(next)
+        },
+        [store],
+      )
+      return (
+        <BodyFacePickingSync
+          enabled
+          evidence={source}
+          featureId={featureId}
+          target={{ schemaVersion: 0, featureId: sourceId, outputRole: "result" }}
+          selectedIds={selectedIds}
+          request={null}
+          onContextChange={publish}
+          pick={() => null}
+          onSelectionChange={() => undefined}
+        />
+      )
+    }
+    const view = render(<Workspace source={evidence} />)
+    const settled = renders
+    // A parent that rebuilds its report hands the task equal evidence in a new object.
+    view.rerender(<Workspace source={structuredClone(evidence)} />)
+    expect(renders).toBe(settled + 1)
+    view.unmount()
   })
 })

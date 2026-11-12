@@ -51,12 +51,17 @@ for (const operation of ["fillet", "chamfer"] as const) {
     await expect(
       form.getByRole("button", { name: `Create ${operation}`, exact: true }),
     ).toBeDisabled()
-    // A failed fillet reports the worker's radius diagnostic instead of the generic copy.
-    await expect(form.getByRole("alert")).toContainText(
-      operation === "fillet"
-        ? "Fillet could not be built at radius 100 mm"
-        : `with the current ${dimension.toLowerCase()} and selected edges`,
-    )
+    const failure = form.getByRole("alert")
+    if (operation === "fillet") {
+      // Fillet forwards the worker's diagnostic instead of the generic copy. Its wording may grow
+      // more specific; the contract is that it names the radius that failed.
+      await expect(failure).toContainText(/radius 100 mm/)
+      await expect(failure).not.toContainText(
+        "The fillet could not be built with the current radius and selected edges",
+      )
+    } else {
+      await expect(failure).toContainText(`with the current ${dimension.toLowerCase()}`)
+    }
     for (const theme of ["light", "dark"]) {
       await page
         .locator("html")

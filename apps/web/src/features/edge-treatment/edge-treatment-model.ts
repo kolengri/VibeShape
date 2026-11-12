@@ -37,6 +37,7 @@ import {
   type FilletVariableRadiusDraft,
   filletUsesV3,
   filletV3Parameters,
+  variableRadiusIssue,
 } from "./edge-treatment-fillet"
 import type {
   EdgeTreatmentFormCopy,
@@ -453,7 +454,7 @@ function chamferAngle(
   return { ok: true as const, quantity: createAngleQuantity(result.value.value, "rad", expression) }
 }
 
-type TreatmentContext = {
+export type TreatmentContext = {
   featureId: FeatureId
   mode: EdgeTreatmentFormMode
   operation: EdgeTreatmentOperation
@@ -594,6 +595,20 @@ function authoredParameters(
     values,
     option,
     size,
+    (raw) => parseTreatmentLength(raw, context, true),
+    context.copy,
+  )
+}
+
+/** Per-row Fillet law issue, parsed with the same rules as the authored V3 feature. */
+export function treatmentVariableRadiusIssue(
+  values: TreatmentValues,
+  reference: EdgeTopoRef | BodyTopoRef,
+  context: TreatmentContext,
+) {
+  return variableRadiusIssue(
+    values,
+    reference,
     (raw) => parseTreatmentLength(raw, context, true),
     context.copy,
   )
