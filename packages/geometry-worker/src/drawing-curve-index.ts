@@ -1,36 +1,41 @@
 import type { DrawingCurve } from "@vibeshape/protocol"
-import { coveringSegments } from "./drawing-segment-coverage"
+import {
+  type Chord,
+  type ChordCache,
+  type CoverageStats,
+  type Round,
+  segmentDistance,
+} from "./drawing-round-chords"
 
 type Point = readonly [number, number]
-type Round = Extract<DrawingCurve, { kind: "circle" | "arc" }>
 type Box = readonly [minX: number, minY: number, maxX: number, maxY: number]
 
-/** A straight covering piece: a line, a polyline segment, or a cached chord of a circle or arc. */
-export type IndexedSegment = Readonly<{ start: Point; end: Point; chord: boolean }>
-
-/** Work counters for deterministic complexity checks; wall time is not a stable measure. */
-export type CoverageStats = { chordBuilds: number; capsuleClips: number }
-
-export type IndexChords = Readonly<{
-  /** Coverage radius; chords stay within a tenth of it of the exact curve. */
-  radius: number
-  /** Largest turn of the curve across one chord. */
-  turn: number
-}>
+/** A straight covering piece: a line or a polyline segment. */
+export type IndexedSegment = Readonly<{ start: Point; end: Point }>
 
 export type IndexOptions = Readonly<{
   /** Largest distance at which a query must still find a covering piece. */
   margin: number
-  chords: IndexChords
+  /** Round chords, built lazily and shared by every index of one cleanup. */
+  chords: ChordCache
   stats?: CoverageStats | undefined
 }>
 
 const LEAF_CAPACITY = 24
 const MAXIMUM_DEPTH = 24
-/** A split that leaves a child with this share of the entries does not separate them. */
+/**
+ * A split is refused only when it would copy most entries into several children: some child keeps
+ * more than this share and the children hold more than `SPLIT_COPIES` times the entries. A lopsided
+ * split that does not duplicate entries still separates them, whatever the insertion order.
+ */
 const SPLIT_GAIN = 0.75
+const SPLIT_COPIES = 1.5
 const KEY_OFFSET = 2 ** 25
 const KEY_SCALE = 2 ** 26
+
+type Entry =
+  | Readonly<{ kind: "segment"; segment: IndexedSegment; bounds: Box }>
+  | Readonly<{ kind: "round"; round: Round; bounds: Box }>
 
 function boxesTouch(left: Box, right: Box) {
   return left[0] <= right[2] && right[0] <= left[2] && left[1] <= right[3] && right[1] <= left[3]
@@ -127,53 +132,58 @@ function quadNode(box: Box, depth: number): QuadNode {
 }
 
 /**
- * Spatial index of covering geometry. Straight pieces live in an adaptive quadtree: a leaf splits
- * once it holds more than a few pieces, so dense clusters subdivide locally while sparse areas stay
- * shallow, and each piece is registered only in the leaves its `margin` capsule reaches. Circles
- * and arcs contribute their chords once, when added, so coverage queries see only the chords near
- * the queried segment; they are also kept whole, keyed by centre, for exact concentric matching.
+ * Spatial index of covering geometry: an adaptive quadtree whose leaves split once they hold more
+ * than a few entries, so dense clusters subdivide locally while sparse areas stay shallow. Straight
+ * pieces are registered in the leaves their `margin` capsule reaches; circles and arcs in the
+ * leaves their `margin` band reaches. A query visits only the leaves along the queried segment and
+ * takes from each round only the chords facing it, built once per round on first use. Rounds are
+ * also keyed by centre for exact concentric matching.
  */
 export class CurveIndex {
-  readonly #segments: IndexedSegment[] = []
-  readonly #segmentBoxes: Box[] = []
+  readonly #entries: Entry[] = []
   readonly #stamps: number[] = []
   readonly #root: QuadNode
   readonly #rounds = new Map<number, Round[]>()
   #stamp = 0
 
   readonly margin: number
-  readonly #chords: IndexChords
+  readonly #chords: ChordCache
   readonly #stats: CoverageStats | undefined
 
   constructor(extent: Box, options: IndexOptions) {
     this.margin = options.margin
     this.#chords = options.chords
     this.#stats = options.stats
-    const margin = this.margin
-    const side = Math.max(extent[2] - extent[0], extent[3] - extent[1], margin)
+    const side = Math.max(extent[2] - extent[0], extent[3] - extent[1], this.margin)
     this.#root = quadNode([extent[0], extent[1], extent[0] + side, extent[1] + side], 0)
   }
 
   add(curve: DrawingCurve) {
-    if (curve.kind === "line") this.#addSegment(curve.start, curve.end, false)
+    if (curve.kind === "line") this.#addSegment(curve.start, curve.end)
     else if (curve.kind === "polyline")
       curve.points.slice(1).forEach((end, index) => {
-        this.#addSegment(curve.points[index] ?? end, end, false)
+        this.#addSegment(curve.points[index] ?? end, end)
       })
     else this.#addRound(curve)
   }
 
-  /** Straight pieces, including round chords, within `margin` of segment start→end. */
+  /** Lines and polyline segments within `margin` of segment start→end. */
   nearSegments(start: Point, end: Point): IndexedSegment[] {
-    const stamp = this.#nextStamp()
-    const box = segmentBox(start, end, 0)
     const found: IndexedSegment[] = []
-    this.#visit(this.#root, start, end, (index) => {
-      if (this.#stamps[index] === stamp) return
-      this.#stamps[index] = stamp
-      const segment = this.#segments[index]
-      const bounds = this.#segmentBoxes[index]
-      if (segment && bounds && boxesTouch(bounds, box)) found.push(segment)
+    this.#near(start, end, (entry) => {
+      if (entry.kind === "segment") found.push(entry.segment)
+    })
+    return found
+  }
+
+  /** Straight covering pieces near segment start→end: segments, and chords of nearby rounds. */
+  coveringPieces(start: Point, end: Point): Chord[] {
+    const found: Chord[] = []
+    this.#near(start, end, (entry) => {
+      if (entry.kind === "segment") found.push([entry.segment.start, entry.segment.end])
+      else if (bandReaches(entry.round, start, end, this.margin))
+        for (const chord of this.#chords.near(entry.round, start, end, this.margin))
+          found.push(chord)
     })
     return found
   }
@@ -190,14 +200,30 @@ export class CurveIndex {
     return found
   }
 
+  /** Visits each entry near segment start→end once; entry boxes already include the margin. */
+  #near(start: Point, end: Point, visit: (entry: Entry) => void) {
+    const stamp = this.#nextStamp()
+    const box = segmentBox(start, end, 0)
+    this.#visit(this.#root, start, end, (index) => {
+      if (this.#stats) this.#stats.scannedEntries += 1
+      if (this.#stamps[index] === stamp) return
+      this.#stamps[index] = stamp
+      const entry = this.#entries[index]
+      if (!entry || !boxesTouch(entry.bounds, box)) return
+      if (this.#stats && entry.kind === "segment") this.#stats.candidates += 1
+      visit(entry)
+    })
+  }
+
   #addRound(round: Round) {
     const key = cellKey(...this.#roundCell(round.center))
     const bucket = this.#rounds.get(key)
     if (bucket) bucket.push(round)
     else this.#rounds.set(key, [round])
-    if (this.#stats) this.#stats.chordBuilds += 1
-    for (const [start, end] of coveringSegments(round, this.#chords.radius, this.#chords.turn))
-      this.#addSegment(start, end, true)
+    this.#insert(
+      this.#root,
+      this.#entries.push({ kind: "round", round, bounds: grow(roundBox(round), this.margin) }) - 1,
+    )
   }
 
   /** Centre cells are at least the margin wide, so a 3×3 neighbourhood finds every match. */
@@ -205,18 +231,23 @@ export class CurveIndex {
     return [Math.floor(center[0] / this.margin), Math.floor(center[1] / this.margin)]
   }
 
-  #addSegment(start: Point, end: Point, chord: boolean) {
-    const index = this.#segments.push({ start, end, chord }) - 1
-    this.#segmentBoxes.push(segmentBox(start, end, this.margin))
-    this.#insert(this.#root, index)
+  #addSegment(start: Point, end: Point) {
+    const entry: Entry = {
+      kind: "segment",
+      segment: { start, end },
+      bounds: segmentBox(start, end, this.margin),
+    }
+    this.#insert(this.#root, this.#entries.push(entry) - 1)
   }
 
-  /** True when the piece's margin capsule may reach the node (conservative at the corners). */
+  /** True when the entry's margin capsule or band may reach the node (conservative). */
   #reaches(node: QuadNode, index: number) {
-    const segment = this.#segments[index]
-    const bounds = this.#segmentBoxes[index]
-    if (!segment || !bounds || !boxesTouch(bounds, node.box)) return false
-    return segmentTouchesBox(segment.start, segment.end, grow(node.box, this.margin))
+    const entry = this.#entries[index]
+    if (!entry || !boxesTouch(entry.bounds, node.box)) return false
+    const near = grow(node.box, this.margin)
+    if (entry.kind === "segment")
+      return segmentTouchesBox(entry.segment.start, entry.segment.end, near)
+    return boxMeetsCircle(near, entry.round.center, entry.round.radius)
   }
 
   #insert(node: QuadNode, index: number) {
@@ -229,26 +260,18 @@ export class CurveIndex {
   }
 
   /**
-   * Splits a full leaf when that separates its pieces. Pieces that all pass through one small area
-   * would be copied into every child, so such a leaf instead waits until it doubles in size.
+   * Splits a full leaf unless that would copy most of its entries into several children, as when
+   * they all pass through one small area; such a leaf waits until it doubles in size.
    */
   #split(node: QuadNode) {
-    const [x0, y0, x1, y1] = node.box
-    if (node.depth >= MAXIMUM_DEPTH || x1 - x0 <= this.margin) {
+    if (node.depth >= MAXIMUM_DEPTH || node.box[2] - node.box[0] <= this.margin) {
       node.limit = Infinity
       return
     }
-    const [xm, ym] = [(x0 + x1) / 2, (y0 + y1) / 2]
-    const children = [
-      quadNode([x0, y0, xm, ym], node.depth + 1),
-      quadNode([xm, y0, x1, ym], node.depth + 1),
-      quadNode([x0, ym, xm, y1], node.depth + 1),
-      quadNode([xm, ym, x1, y1], node.depth + 1),
-    ]
+    const children = quadChildren(node)
     for (const index of node.entries)
       for (const child of children) if (this.#reaches(child, index)) child.entries.push(index)
-    const largest = children.reduce((most, child) => Math.max(most, child.entries.length), 0)
-    if (largest > node.entries.length * SPLIT_GAIN) {
+    if (!separates(children, node.entries.length)) {
       node.limit = node.entries.length * 2
       return
     }
@@ -267,6 +290,53 @@ export class CurveIndex {
     this.#stamp += 1
     return this.#stamp
   }
+}
+
+function quadChildren(node: QuadNode) {
+  const [x0, y0, x1, y1] = node.box
+  const [xm, ym] = [(x0 + x1) / 2, (y0 + y1) / 2]
+  const depth = node.depth + 1
+  return [
+    quadNode([x0, y0, xm, ym], depth),
+    quadNode([xm, y0, x1, ym], depth),
+    quadNode([x0, ym, xm, y1], depth),
+    quadNode([xm, ym, x1, y1], depth),
+  ]
+}
+
+/** A split separates `count` entries unless one child keeps most of them and most are copied. */
+function separates(children: readonly QuadNode[], count: number) {
+  let largest = 0
+  let copies = 0
+  for (const child of children) {
+    largest = Math.max(largest, child.entries.length)
+    copies += child.entries.length
+  }
+  return largest <= count * SPLIT_GAIN || copies <= count * SPLIT_COPIES
+}
+
+/** True when the circle of `radius` around `center` passes through `box` (boundary or interior). */
+function boxMeetsCircle(box: Box, center: Point, radius: number) {
+  const [cx, cy] = center
+  const nearest = Math.hypot(
+    Math.max(box[0] - cx, 0, cx - box[2]),
+    Math.max(box[1] - cy, 0, cy - box[3]),
+  )
+  const farthest = Math.hypot(
+    Math.max(cx - box[0], box[2] - cx),
+    Math.max(cy - box[1], box[3] - cy),
+  )
+  return nearest <= radius && radius <= farthest
+}
+
+/** True when segment start→end comes within `margin` of the round's full circle. */
+function bandReaches(round: Round, start: Point, end: Point, margin: number) {
+  const nearest = segmentDistance(round.center, start, end)
+  const farthest = Math.max(
+    Math.hypot(start[0] - round.center[0], start[1] - round.center[1]),
+    Math.hypot(end[0] - round.center[0], end[1] - round.center[1]),
+  )
+  return nearest <= round.radius + margin && farthest >= round.radius - margin
 }
 
 function cellKey(x: number, y: number) {

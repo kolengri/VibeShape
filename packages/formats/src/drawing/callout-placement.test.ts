@@ -289,3 +289,42 @@ describe("diameter callout placement", () => {
     expect(sheet.omittedCallouts).toBeGreaterThan(0)
   })
 })
+
+describe("callout labels and hidden lines", () => {
+  it("keeps labels off dashed hidden lines when hidden lines are drawn", () => {
+    const projection = topView([[20, 15, 3]])
+    const [view] = projection.views
+    if (!view) throw new Error("Expected the top view.")
+    const hidden = [21, 22.5, 24, 25.5, 27, 28.5].map((y) => ({
+      visibility: "hidden" as const,
+      edgeClass: "sharp" as const,
+      curve: {
+        kind: "line" as const,
+        start: [0, y] as [number, number],
+        end: [40, y] as [number, number],
+      },
+    }))
+    const sheet = composeDrawingSheet({
+      projection: { ...projection, views: [{ ...view, edges: [...view.edges, ...hidden] }] },
+      settings: {
+        ...drawingSettingsSchema.parse({ views: ["top"] }),
+        scale: { mode: "explicit", numerator: 1, denominator: 1 },
+      },
+      copy,
+      documentTitle: "Callouts",
+    })
+    const dashed = primitivesOf(sheet, ["view-top"]).filter(
+      (item): item is Line => item.kind === "line" && item.layer === "hidden",
+    )
+    expect(dashed.length).toBe(hidden.length)
+    expect(
+      texts(sheet)
+        .filter((label) => label.text.includes("Ø"))
+        .filter((label) =>
+          dashed.some((edge) => crossesBox(edge.start, edge.end, primitiveBox(label))),
+        )
+        .map((label) => label.text),
+    ).toEqual([])
+    expect(calloutRoutes(sheet).filter(({ routed }) => !routed)).toEqual([])
+  })
+})

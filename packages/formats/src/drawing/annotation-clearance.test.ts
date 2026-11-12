@@ -231,3 +231,76 @@ describe("annotation clearance", () => {
     },
   )
 })
+
+/** Strict-interior Liang–Barsky test: does segment start→end pass through `box`? */
+function crossesBox(start: readonly number[], end: readonly number[], box: SheetBox) {
+  const [x0, y0, x1, y1] = [start[0] ?? 0, start[1] ?? 0, end[0] ?? 0, end[1] ?? 0]
+  const [dx, dy] = [x1 - x0, y1 - y0]
+  let [from, to] = [0, 1]
+  const sides: [number, number][] = [
+    [-dx, x0 - box[0]],
+    [dx, box[2] - x0],
+    [-dy, y0 - box[1]],
+    [dy, box[3] - y0],
+  ]
+  for (const [p, q] of sides) {
+    if (Math.abs(p) < 1e-12) {
+      if (q <= 0) return false
+    } else if (p < 0) from = Math.max(from, q / p)
+    else to = Math.min(to, q / p)
+  }
+  return to - from > 1e-9
+}
+
+/** Dimension values struck through by any dimension, extension or leader line. */
+function struckValues(sheet: DrawingSheet) {
+  const primitives = sheet.groups.find(({ id }) => id === "dimensions")?.primitives ?? []
+  const lines = primitives.flatMap((item) => (item.kind === "line" ? [item] : []))
+  return primitives.flatMap((item) =>
+    item.kind === "text" &&
+    lines.some((line) => crossesBox(line.start, line.end, primitiveBox(item)))
+      ? [item.text]
+      : [],
+  )
+}
+
+describe("dimension values on thin parts", () => {
+  const parts = [
+    ["a PCB", 100, 80, 1.6],
+    ["a plate", 200, 150, 3],
+    ["a sheet", 600, 400, 1],
+  ] as const
+  it.each(parts)("keeps the thickness of %s clear of its extension lines", (_, x, y, z) => {
+    for (const sheetSize of ["iso-a4", "iso-a3"] as const) {
+      const sheet = compose(boxProjection(x, y, z), { sheetSize })
+      expect({ sheetSize, struck: struckValues(sheet) }).toEqual({ sheetSize, struck: [] })
+      const thickness = sheet.groups
+        .find(({ id }) => id === "dimensions")
+        ?.primitives.filter((item) => item.kind === "text" && item.text === String(z))
+      expect(thickness?.length).toBeGreaterThanOrEqual(2)
+    }
+  })
+
+  it("never strikes a dimension value through with a dimension line across random parts", () => {
+    let seed = 5
+    const random = () => {
+      seed = (seed * 16807) % 2147483647
+      return seed / 2147483647
+    }
+    const between = (low: number, high: number) =>
+      Math.exp(Math.log(low) + random() * Math.log(high / low))
+    const sheetSizes = ["iso-a4", "iso-a3", "iso-a2", "us-letter"] as const
+    const struck = Array.from({ length: 300 }, () => {
+      const dims = [between(0.5, 800), between(0.5, 800), between(0.5, 800)] as const
+      const settings = {
+        sheetSize: sheetSizes[Math.floor(random() * sheetSizes.length)] ?? "iso-a3",
+        units: random() < 0.3 ? ("in" as const) : ("mm" as const),
+      }
+      return struckValues(compose(boxProjection(...dims), settings)).map(
+        (text) =>
+          `${text} in ${dims.map((value) => value.toFixed(2)).join(" × ")} ${JSON.stringify(settings)}`,
+      )
+    }).flat()
+    expect(struck).toEqual([])
+  })
+})

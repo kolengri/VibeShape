@@ -1,10 +1,7 @@
-import type { DrawingCurve } from "@vibeshape/protocol"
-
 type Point = readonly [number, number]
 export type Interval = readonly [start: number, end: number]
 
 const EPSILON = 1e-12
-const FULL_TURN = 2 * Math.PI
 
 /** Parts of `range` not covered by the merged intervals, ignoring slivers within `tolerance`. */
 export function complement(range: Interval, intervals: readonly Interval[], tolerance: number) {
@@ -91,33 +88,6 @@ function capsuleRange(
   return [Math.min(...present.map(([from]) => from)), Math.max(...present.map(([, to]) => to))]
 }
 
-/**
- * Chords of a circle or arc. Each chord's sagitta is at most a tenth of `radius`, so its capsule
- * stays within that margin of the exact tube around the curve, and each chord turns at most
- * `maximumTurn` so its direction stays within half of that of the curve's tangent.
- */
-export function coveringSegments(
-  curve: Extract<DrawingCurve, { kind: "circle" | "arc" }>,
-  radius: number,
-  maximumTurn: number,
-): [Point, Point][] {
-  const [from, to] = curve.kind === "arc" ? [curve.startAngle, curve.endAngle] : [0, FULL_TURN]
-  const sagitta = radius / 10
-  const step =
-    curve.radius <= sagitta
-      ? maximumTurn
-      : Math.min(maximumTurn, 2 * Math.acos(1 - sagitta / curve.radius))
-  const count = Math.max(1, Math.ceil((to - from) / step))
-  const at = (index: number): Point => {
-    const angle = from + ((to - from) * index) / count
-    return [
-      curve.center[0] + curve.radius * Math.cos(angle),
-      curve.center[1] + curve.radius * Math.sin(angle),
-    ]
-  }
-  return Array.from({ length: count }, (_, index): [Point, Point] => [at(index), at(index + 1)])
-}
-
 export type PolylineCoverage = Readonly<{
   /** Covering segments near segment start→end. */
   near: (start: Point, end: Point) => readonly (readonly [Point, Point])[]
@@ -129,7 +99,6 @@ export type PolylineCoverage = Readonly<{
   minimumCovered: number
   /** Uncovered runs no longer than this are dropped. */
   dust: number
-  stats?: { capsuleClips: number } | undefined
 }>
 
 /**
@@ -170,7 +139,7 @@ function segmentCoverage(
   start: Point,
   end: Point,
   length: number,
-  { near, radius, maximumAngle, stats }: PolylineCoverage,
+  { near, radius, maximumAngle }: PolylineCoverage,
 ): Interval[] {
   if (length <= EPSILON) return []
   const direction: Point = [(end[0] - start[0]) / length, (end[1] - start[1]) / length]
@@ -179,7 +148,6 @@ function segmentCoverage(
     const span = Math.hypot(to[0] - from[0], to[1] - from[1])
     const sine = Math.abs(direction[0] * (to[1] - from[1]) - direction[1] * (to[0] - from[0]))
     if (span <= EPSILON || sine > steep * span) return []
-    if (stats) stats.capsuleClips += 1
     const range = capsuleRange(start, direction, from, to, radius)
     return range ? [[Math.max(range[0], 0), Math.min(range[1], length)]] : []
   })

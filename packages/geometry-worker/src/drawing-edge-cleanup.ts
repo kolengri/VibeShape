@@ -7,7 +7,8 @@ import {
   MAX_DRAWING_VIEW_EDGES,
 } from "@vibeshape/protocol"
 import { DrawingBudgetError } from "./drawing-budget"
-import { type CoverageStats, CurveIndex, curvesExtent } from "./drawing-curve-index"
+import { CurveIndex, curvesExtent } from "./drawing-curve-index"
+import { ChordCache, type CoverageStats, segmentDistance } from "./drawing-round-chords"
 import { complement, type Interval, uncoveredPolylineRuns } from "./drawing-segment-coverage"
 
 type Point = readonly [number, number]
@@ -75,7 +76,11 @@ export function suppressCoincidentEdges(
   const extent = curvesExtent(edges.map(({ curve }) => curve))
   const options = {
     margin: SAMPLED_COVERAGE_TOLERANCE_MM + COINCIDENCE_TOLERANCE_MM,
-    chords: { radius: SAMPLED_COVERAGE_TOLERANCE_MM, turn: 2 * DRAWING_ANGULAR_TOLERANCE_RAD },
+    // Shared by both visible indexes, so each round is chorded at most once and only when needed.
+    chords: new ChordCache(
+      { radius: SAMPLED_COVERAGE_TOLERANCE_MM, turn: 2 * DRAWING_ANGULAR_TOLERANCE_RAD },
+      stats,
+    ),
     stats,
   }
   const visible = new CurveIndex(extent, options)
@@ -93,14 +98,14 @@ export function suppressCoincidentEdges(
   }
   for (const edge of edges) {
     if (edge.visibility !== "visible") continue
-    for (const curve of uncoveredPieces(edge.curve, [keptVisible], stats)) {
+    for (const curve of uncoveredPieces(edge.curve, [keptVisible])) {
       keptVisible.add(curve)
       keep(edge, curve)
     }
   }
   for (const edge of edges) {
     if (edge.visibility !== "hidden") continue
-    for (const curve of uncoveredPieces(edge.curve, [visible, keptHidden], stats)) {
+    for (const curve of uncoveredPieces(edge.curve, [visible, keptHidden])) {
       keptHidden.add(curve)
       keep(edge, curve)
     }
@@ -108,18 +113,12 @@ export function suppressCoincidentEdges(
   return kept
 }
 
-function uncoveredPieces(
-  curve: DrawingCurve,
-  covers: readonly CurveIndex[],
-  stats: CoverageStats | undefined,
-): DrawingCurve[] {
-  if (curve.kind === "polyline") return uncoveredPolyline(curve, covers, stats)
+function uncoveredPieces(curve: DrawingCurve, covers: readonly CurveIndex[]): DrawingCurve[] {
+  if (curve.kind === "polyline") return uncoveredPolyline(curve, covers)
   if (curve.kind === "line")
     return uncoveredLine(
       curve,
-      covers.flatMap((index) =>
-        index.nearSegments(curve.start, curve.end).filter(({ chord }) => !chord),
-      ),
+      covers.flatMap((index) => index.nearSegments(curve.start, curve.end)),
     )
   return uncoveredRound(
     curve,
@@ -220,23 +219,15 @@ function circlePieces(circle: Round, pieces: readonly Interval[]): DrawingCurve[
  * chords of circles and arcs), and only the uncovered runs remain, stitched across vertices.
  * Crossing edges remove nothing.
  */
-function uncoveredPolyline(
-  polyline: Polyline,
-  covers: readonly CurveIndex[],
-  stats: CoverageStats | undefined,
-): DrawingCurve[] {
+function uncoveredPolyline(polyline: Polyline, covers: readonly CurveIndex[]): DrawingCurve[] {
   const radius = SAMPLED_COVERAGE_TOLERANCE_MM
   const runs = uncoveredPolylineRuns(polyline.points, {
-    near: (start, end) =>
-      covers.flatMap((index) =>
-        index.nearSegments(start, end).map((piece): [Point, Point] => [piece.start, piece.end]),
-      ),
+    near: (start, end) => covers.flatMap((index) => index.coveringPieces(start, end)),
     radius,
     maximumAngle: CROSSING_ANGLE_RAD,
     // A near-parallel graze shorter than a few tolerances is contact, not a shared stretch.
     minimumCovered: 4 * radius,
     dust: radius,
-    stats,
   })
   return runs === null ? [polyline] : runs.flatMap(splitPolyline)
 }
@@ -244,18 +235,4 @@ function uncoveredPolyline(
 /** Perpendicular distance from `point` to the infinite line through `origin` along unit `direction`. */
 function lineDistance(point: Point, origin: Point, direction: Point) {
   return Math.abs((point[0] - origin[0]) * direction[1] - (point[1] - origin[1]) * direction[0])
-}
-
-function segmentDistance(point: Point, start: Point, end: Point) {
-  const dx = end[0] - start[0]
-  const dy = end[1] - start[1]
-  const lengthSquared = dx * dx + dy * dy
-  const t =
-    lengthSquared === 0
-      ? 0
-      : Math.max(
-          0,
-          Math.min(1, ((point[0] - start[0]) * dx + (point[1] - start[1]) * dy) / lengthSquared),
-        )
-  return Math.hypot(point[0] - (start[0] + dx * t), point[1] - (start[1] + dy * t))
 }

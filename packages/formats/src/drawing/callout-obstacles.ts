@@ -30,9 +30,10 @@ const GRID_CELLS = 32
 const ARC_SAGITTA_SHARE = 1e-3
 
 /**
- * The visible straight pieces of a view (lines, polyline segments, arc chords) in projection
- * coordinates, bucketed in a uniform grid over the view bounds so label boxes test only nearby
- * pieces. Full circles are excluded: callout placement tests them exactly as rings.
+ * The drawn straight pieces of a view (lines, polyline segments, arc chords; hidden ones only when
+ * hidden lines are drawn) in projection coordinates, bucketed in a uniform grid over the view
+ * bounds so label boxes test only nearby pieces. Full circles are excluded: callout placement
+ * tests them exactly as rings.
  */
 class ViewLines {
   readonly #segments: SheetSegment[] = []
@@ -42,13 +43,13 @@ class ViewLines {
   readonly #cell: number
   #stamp = 0
 
-  constructor(view: DrawingViewProjection) {
+  constructor(view: DrawingViewProjection, hidden: boolean) {
     const { min, max } = view.bounds
     const span = Math.max(max[0] - min[0], max[1] - min[1], 1e-6)
     this.#origin = [min[0], min[1]]
     this.#cell = span / GRID_CELLS
     for (const edge of view.edges)
-      if (edge.visibility === "visible")
+      if (hidden || edge.visibility === "visible")
         for (const segment of curveSegments(edge.curve, span * ARC_SAGITTA_SHARE))
           this.#add(segment)
   }
@@ -112,13 +113,15 @@ function curveSegments(curve: DrawingViewProjection["edges"][number]["curve"], s
   return Array.from({ length: count }, (_, index): SheetSegment => [at(index), at(index + 1)])
 }
 
-const cache = new WeakMap<DrawingViewProjection, ViewLines>()
+const cache = new WeakMap<DrawingViewProjection, Map<boolean, ViewLines>>()
 
-/** Visible line pieces of a view, built once per projection and reused across scale attempts. */
-export function viewLines(view: DrawingViewProjection) {
-  const cached = cache.get(view)
+/** Drawn line pieces of a view, built once per projection and reused across scale attempts. */
+export function viewLines(view: DrawingViewProjection, hidden: boolean) {
+  const built = cache.get(view) ?? new Map<boolean, ViewLines>()
+  cache.set(view, built)
+  const cached = built.get(hidden)
   if (cached) return cached
-  const lines = new ViewLines(view)
-  cache.set(view, lines)
+  const lines = new ViewLines(view, hidden)
+  built.set(hidden, lines)
   return lines
 }

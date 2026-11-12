@@ -29,7 +29,7 @@ export class BinaryExportPreparationError extends Error {
   }
 }
 type Format = Exclude<BinaryExportDescriptor["format"], "png">
-type ModelFormat = Exclude<Format, "svg" | "dxf" | "pdf">
+export type ModelFormat = Exclude<Format, "svg" | "dxf" | "pdf">
 export type PreparedPictureFile = {
   ok: true
   documentId: string
@@ -43,6 +43,7 @@ type PreparedFile =
   | { ok: true; documentId: string; revision: number; format: Format; file: Uint8Array }
   | { ok: false }
 export type PreparedDrawingFile = PreparedFile
+export type PreparedModelFile = PreparedFile
 export type BinaryExportSourcePort = Readonly<{
   documentId: string
   currentRevision: () => number

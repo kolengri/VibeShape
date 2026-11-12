@@ -44,6 +44,29 @@ function roundedLine(curve: DrawingCurve) {
   return [round(curve.start[0]), round(curve.start[1]), round(curve.end[0]), round(curve.end[1])]
 }
 
+const coverageStats = () => ({ chordBuilds: 0, scannedEntries: 0, candidates: 0 })
+
+/** A 200 mm wavy edge sampled into 2,600 segments, so its pieces arrive in x order. */
+function stripCurves(): DrawingCurve[] {
+  const points = Array.from({ length: 2601 }, (_, index): Point => {
+    const x = (index / 2600) * 200
+    return [x, 10 + 5 * Math.sin(x / 7)]
+  })
+  return [{ kind: "polyline", points }]
+}
+
+/** A 300 × 60 mm plate with 25 × 5 sampled hole outlines, row by row from the bottom left. */
+function plateHoles(): DrawingCurve[] {
+  return Array.from({ length: 125 }, (_, index): DrawingCurve => {
+    const [cx, cy] = [6 + (index % 25) * 12, 6 + Math.floor(index / 25) * 12]
+    const points = Array.from({ length: 33 }, (_, step): Point => {
+      const angle = (step / 32) * 2 * Math.PI
+      return [cx + 4 * Math.cos(angle), cy + 3 * Math.sin(angle)]
+    })
+    return { kind: "polyline", points }
+  })
+}
+
 describe("hidden edge coverage", () => {
   it("keeps the gaps between sparse visible segments sampled at the old probe points", () => {
     const visible = [
@@ -260,7 +283,7 @@ describe("hidden edge coverage", () => {
     expect(total - remaining).toBeLessThan(4.8)
   })
 
-  it("chords each circle once and clips only the chords near a hidden segment", () => {
+  it("chords only the rings a hidden curve reaches and only the chords facing it", () => {
     let seed = 3
     const random = () => {
       seed = (seed * 16807) % 2147483647
@@ -281,13 +304,69 @@ describe("hidden edge coverage", () => {
       })
       return edge("hidden", { kind: "polyline", points })
     })
-    const stats = { chordBuilds: 0, capsuleClips: 0 }
+    const stats = coverageStats()
     const result = suppressCoincidentEdges([...rings, ...hidden], stats)
     expect(hiddenOf(result).length).toBeGreaterThanOrEqual(hidden.length)
-    // The visible ring index and the kept-visible index each chord every ring exactly once.
-    expect(stats.chordBuilds).toBe(2 * rings.length)
-    // Re-chording a whole ring per nearby segment clipped hundreds of chords per segment.
-    expect(stats.capsuleClips).toBeLessThan(hidden.length * 19 * 2)
+    // One shared chord cache: a ring is chorded once, however many indexes hold it.
+    expect(stats.chordBuilds).toBeLessThanOrEqual(rings.length)
+    const segments = hidden.length * 19
+    expect(stats.scannedEntries).toBeLessThan(segments * 32)
+    // A whole ring's chords per nearby segment would hand hundreds of pieces to clipping.
+    expect(stats.candidates).toBeLessThan(segments * 4)
+  })
+
+  it.each([
+    ["a long sampled edge inserted left to right", stripCurves()],
+    ["a plate of sampled holes inserted row by row", plateHoles()],
+  ])("keeps index work near-linear for %s", (_, visible) => {
+    const hidden = visible.map((curve) => edge("hidden", curve))
+    const segments = visible.reduce(
+      (sum, curve) => sum + (curve.kind === "polyline" ? curve.points.length - 1 : 1),
+      0,
+    )
+    const stats = coverageStats()
+    const result = suppressCoincidentEdges(
+      [...visible.map((curve) => edge("visible", curve)), ...hidden],
+      stats,
+    )
+    expect(hiddenOf(result)).toEqual([])
+    // Every hidden segment scanning one unsplit leaf of all segments would be quadratic.
+    expect(stats.scannedEntries).toBeLessThan(segments * 2 * 48)
+    expect(stats.candidates).toBeLessThan(segments * 2 * 8)
+  })
+
+  it("never chords circles in a view without sampled curves", () => {
+    const holes = Array.from({ length: 400 }, (_, index): DrawingCurve => {
+      const center: Point = [5 + (index % 20) * 6, 5 + Math.floor(index / 20) * 6]
+      return { kind: "circle", center, radius: 2.5 }
+    })
+    const stats = coverageStats()
+    const result = suppressCoincidentEdges(
+      [
+        ...holes.map((curve) => edge("visible", curve)),
+        ...holes.map((curve) => edge("hidden", curve)),
+        edge("hidden", line([0, 3], [130, 3])),
+      ],
+      stats,
+    )
+    expect(hiddenOf(result)).toHaveLength(1)
+    expect(stats.chordBuilds).toBe(0)
+  })
+
+  it("removes the hidden sampled twin of a sub-millimetre visible circle", () => {
+    // HLR samples within the 0.05 rad angular tolerance. Circle chords must turn as little, or the
+    // chord directions near their ends differ by more than the crossing angle from the samples.
+    const radius = 0.1
+    const count = Math.ceil((2 * Math.PI) / 0.05)
+    const samples = Array.from({ length: count + 1 }, (_, index): Point => {
+      const angle = (index / count) * 2 * Math.PI
+      return [radius * Math.cos(angle), radius * Math.sin(angle)]
+    })
+    const result = suppressCoincidentEdges([
+      edge("visible", { kind: "circle", center: [0, 0], radius }),
+      edge("hidden", { kind: "polyline", points: samples }),
+    ])
+    expect(hiddenOf(result)).toEqual([])
   })
 
   it("removes a hidden polyline that a coarser visible sampling follows continuously", () => {

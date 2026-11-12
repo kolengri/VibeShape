@@ -43,6 +43,9 @@ When advertised, use `prepare_model_export` with exact committed `revision` and
 `format: "step" | "stl" | "3mf" | "glb" | "obj"`, or `prepare_project_backup` for an editable
 `.vshape`. These tools work through local
 and paired remote MCP, accept no destination path and export the committed document.
+Model export failures: `rebuild-failed` (final; the committed revision did not rebuild, repair the
+model first), `stale-revision` (retry on the current revision), otherwise `export-failed` with its
+own retry flag. `export_model` reports the same codes.
 
 For mesh formats (STL/3MF/GLB/OBJ), optionally pass `meshQuality: { chordTolerance, angularTolerance }` with absolute
 chord tolerance in millimeters (`0.005`–`1`) and angular deflection in radians (`0.01`–`0.5`).

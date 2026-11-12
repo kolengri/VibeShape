@@ -3,7 +3,7 @@ import type { DrawingCurve } from "@vibeshape/protocol"
 import { type SheetSegment, segmentCrossesBox, viewLines } from "./callout-obstacles"
 import type { ViewPlacement } from "./layout"
 import { type SheetPoint, type SheetPrimitive, sheetNumber } from "./sheet"
-import { primitiveBox } from "./text-metrics"
+import { primitiveBox, textWidthMm } from "./text-metrics"
 
 export const TEXT_HEIGHT_MM = 3.5
 const ARROW_LENGTH_MM = 3
@@ -53,10 +53,7 @@ export function overallDimensions(
     result.push(
       line([left, bottom - EXTENSION_GAP_MM], [left, y - EXTENSION_OVERSHOOT_MM]),
       line([right, bottom - EXTENSION_GAP_MM], [right, y - EXTENSION_OVERSHOOT_MM]),
-      line([left, y], [right, y]),
-      arrowhead([left, y], [right, y]),
-      arrowhead([right, y], [left, y]),
-      text([(left + right) / 2, y + 1], formatLength(max[0] - min[0], units), "middle", 0),
+      ...linearDimension("horizontal", left, right, y, formatLength(max[0] - min[0], units)),
     )
   }
   if (max[1] - min[1] > 1e-6) {
@@ -64,13 +61,48 @@ export function overallDimensions(
     result.push(
       line([left - EXTENSION_GAP_MM, bottom], [x - EXTENSION_OVERSHOOT_MM, bottom]),
       line([left - EXTENSION_GAP_MM, top], [x - EXTENSION_OVERSHOOT_MM, top]),
-      line([x, bottom], [x, top]),
-      arrowhead([x, bottom], [x, top]),
-      arrowhead([x, top], [x, bottom]),
-      text([x - 1, (bottom + top) / 2], formatLength(max[1] - min[1], units), "middle", 90),
+      ...linearDimension("vertical", bottom, top, x, formatLength(max[1] - min[1], units)),
     )
   }
   return result
+}
+
+/** Clearance between a dimension value and the extension lines beside it. */
+const VALUE_CLEARANCE_MM = 1
+
+/**
+ * Dimension line, arrows and value between `from` and `to` along one sheet axis, at `at` across
+ * it. Horizontal values sit above the line; vertical values read upward left of it. A value too
+ * long for the space between the extension lines goes outside, beyond the far one, on an extended
+ * dimension line, with both arrows outside pointing in (ISO 129-1).
+ */
+function linearDimension(
+  axis: "horizontal" | "vertical",
+  from: number,
+  to: number,
+  at: number,
+  value: string,
+): SheetPrimitive[] {
+  const point = (along: number): SheetPoint => (axis === "horizontal" ? [along, at] : [at, along])
+  const label = (along: number, align: "start" | "middle") =>
+    axis === "horizontal"
+      ? text([along, at + 1], value, align, 0)
+      : text([at - 1, along], value, align, 90)
+  const length = textWidthMm(value, TEXT_HEIGHT_MM)
+  if (length + 2 * VALUE_CLEARANCE_MM <= to - from)
+    return [
+      line(point(from), point(to)),
+      arrowhead(point(from), point(to)),
+      arrowhead(point(to), point(from)),
+      label((from + to) / 2, "middle"),
+    ]
+  const start = to + ARROW_LENGTH_MM + VALUE_CLEARANCE_MM
+  return [
+    line(point(from - ARROW_LENGTH_MM - VALUE_CLEARANCE_MM), point(start + length)),
+    arrowhead(point(from), point(from - ARROW_LENGTH_MM)),
+    arrowhead(point(to), point(to + ARROW_LENGTH_MM)),
+    label(start, "start"),
+  ]
 }
 
 type Circle = Extract<DrawingCurve, { kind: "circle" }>
@@ -91,19 +123,24 @@ export type PlacedCallouts = Readonly<{ primitives: SheetPrimitive[]; omitted: n
  * are placed greedily in a fixed order (by centre, then radius, so concentric rings are placed in
  * turn): each tries the leader shelves and directions in order and takes the first that stays
  * readable. Its label and shoulder must clear every box placed so far, including `obstacles`; its
- * label must clear earlier leaders, the view's visible circles and visible line pieces; and its
- * leader must not pass through any placed text. A callout that fits nowhere, or beyond the first
- * eight diameters, is omitted and counted rather than drawn over other text or lines.
+ * label must clear earlier leaders and the view's drawn circles and line pieces (hidden ones too
+ * when hidden lines are drawn); and its leader must not pass through any placed text. A callout
+ * that fits nowhere, or beyond the first eight diameters, is omitted and counted rather than drawn
+ * over other text or lines.
  */
 export function diameterCallouts(
   placement: ViewPlacement,
-  units: DrawingSettings["units"],
+  settings: Pick<DrawingSettings, "units" | "hiddenLines">,
   factor: number,
   obstacles: readonly SheetPrimitive[],
 ): PlacedCallouts {
-  const circles = placement.projection.edges.flatMap((edge) =>
-    edge.visibility === "visible" && edge.curve.kind === "circle" ? [edge.curve] : [],
+  const { units, hiddenLines } = settings
+  const drawnCircles = placement.projection.edges.flatMap((edge) =>
+    (hiddenLines || edge.visibility === "visible") && edge.curve.kind === "circle"
+      ? [{ visible: edge.visibility === "visible", circle: edge.curve }]
+      : [],
   )
+  const circles = drawnCircles.flatMap(({ visible, circle }) => (visible ? [circle] : []))
   const groups = new Map<string, Circle[]>()
   for (const circle of uniqueCircles(circles)) {
     const key = sheetNumber(circle.radius, 6)
@@ -119,7 +156,7 @@ export function diameterCallouts(
     boxes: obstacles.map(primitiveBox),
     texts: obstacles.filter(({ kind }) => kind === "text").map(primitiveBox),
     leaders: [],
-    rings: uniqueCircles(circles).map(
+    rings: uniqueCircles(drawnCircles.map(({ circle }) => circle)).map(
       (circle): Ring => ({
         center: toSheet(placement, factor, circle.center),
         radius: circle.radius * factor,
@@ -127,7 +164,7 @@ export function diameterCallouts(
     ),
     lines: (box) => {
       const [x, y] = placement.origin
-      return viewLines(placement.projection).crosses([
+      return viewLines(placement.projection, hiddenLines).crosses([
         (box[0] - x) / factor,
         (box[1] - y) / factor,
         (box[2] - x) / factor,

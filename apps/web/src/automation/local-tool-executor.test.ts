@@ -713,6 +713,46 @@ describe("local automation tool executor", () => {
     ).resolves.toMatchObject({ ok: false, diagnostic: { code: "export-failed" } })
   })
 
+  it("reports a failed rebuild from export_model as final instead of a retryable export failure", async () => {
+    const actor = commandActorSchema.parse({
+      type: "mcp",
+      clientId: "org.example.client",
+      sessionId: id(8),
+    })
+    const executor = createLocalToolExecutor(
+      {
+        documentId: id(9),
+        revision: 3,
+        host: {
+          createDraft: vi.fn(),
+          inspectDraft: vi.fn(),
+          applyCommand: vi.fn(),
+          previewDraft: vi.fn(),
+          commitDraft: vi.fn(),
+          discardDraft: vi.fn(),
+        },
+        readCad: vi.fn(),
+        readInfo: () => null,
+        exportRevisionBound: vi.fn().mockResolvedValue({
+          ok: false,
+          diagnostic: {
+            code: "export-failed",
+            message: "The committed document could not be rebuilt.",
+            retryable: false,
+            sourceCode: "rebuild-failed",
+          },
+        }),
+      },
+      actor,
+    )
+    await expect(
+      executor.execute({ tool: "export_model", arguments: { revision: 3, format: "stl" } }),
+    ).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "rebuild-failed", retryable: false },
+    })
+  })
+
   it.each([
     ["create_fillet", "org.vibeshape.feature.add", "fillet", "radius", "#rounding"],
     ["update_fillet", "org.vibeshape.feature.update", "fillet", "radius", "#rounding"],

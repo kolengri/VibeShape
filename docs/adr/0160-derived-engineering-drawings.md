@@ -61,14 +61,19 @@ than 0.12 rad (about 7°) crosses the curve and cuts nothing however long it sta
 radius. A sign change of the signed distance cannot classify crossings here, because two samplings
 of one curve cross each other at every chord. Covered stretches are merged across vertices;
 stretches no longer than four radii only graze the curve and cut nothing; uncovered runs reuse the
-original vertices and runs no longer than one radius are dropped. Straight pieces, including the
-chords each circle or arc contributes once when it is indexed, live in an adaptive quadtree whose
-leaves split above 24 pieces (unless a split would not separate them) and register each piece only
-in the leaves within the radius of it; full circles and arcs are also keyed by centre for the
-concentric test. A query therefore touches only the pieces near the queried segment, never a whole
-circle's chords, and the work is proportional to the number of covering pieces actually within
-tolerance. That is not linear where many sampled curves run within tolerance of each other in one
-spot: those pairs are all genuine candidates, and the 50,000-edge view budget bounds them.
+original vertices and runs no longer than one radius are dropped. Lines, polyline segments,
+circles and arcs live in an adaptive quadtree: a leaf splits above 24 entries unless that would
+copy most of them into several children (some child keeps more than 75 % and the children hold
+more than 1.5 times the entries), so a lopsided split caused by insertion order still separates
+them. Straight pieces are registered in the leaves within the radius of them, circles and arcs in
+the leaves their band of that radius crosses. A circle or arc is chorded only when a sampled
+curve's query first reaches it, once per cleanup for all indexes, and a query takes only the chords
+facing the queried segment, so views of many circles and no sampled curves never build chords.
+Circles and arcs are also keyed by centre for the concentric test. The work is proportional to the
+covering pieces actually within tolerance; where many sampled curves run within tolerance of each
+other in one spot those pairs are all genuine candidates, and the 50,000-edge view budget bounds
+them. Unit tests bound leaf entries scanned, pieces handed to clipping and chord builds by counters,
+not wall time.
 Output contains only coordinates, never OCCT
 indices.
 
@@ -76,6 +81,8 @@ Drawings and geometry exports only use geometry of the captured revision: before
 document report must be at that revision and its rebuild must have succeeded (a lagging report is
 a retryable `stale-revision`, a failed rebuild a final `rebuild-failed`), and the revision the
 worker actually projected or exported, which is its last successful rebuild, must equal it.
+MCP model exports (`prepare_model_export`, `export_model`) report the same `rebuild-failed` and
+`stale-revision` codes instead of a generic retryable `export-failed`.
 
 Without an explicit body selection the projection draws every exact terminal body and skips
 triangle meshes, failing only when none remains; an explicit selection containing a mesh fails.
@@ -94,14 +101,18 @@ measured extents of its own annotations (dimension rows, callouts and label, wit
 boxes) beyond its rectangle, and neighbouring envelopes keep 6 mm apart. Automatic scale picks the
 largest ISO 5455 scale whose arrangement, annotations included, fits the area above the title block;
 an explicit ratio is honoured and reported as not fitting when any annotation would leave that area.
-Each orthographic view gets overall width and height dimensions and one diameter callout per
+Each orthographic view gets overall width and height dimensions; a value longer than the space
+between its extension lines goes outside, beyond the far extension line on an extended dimension
+line, with both arrows outside pointing in (ISO 129-1), so thin parts never strike their thickness
+through. It also gets one diameter callout per
 distinct visible full-circle diameter (`n× Ø d` when repeated, at most eight). Callouts are placed
 after the dimensions and view label, greedily in a fixed order (by centre, then radius, so
 concentric rings are placed in turn). Each tries five leader shelves (8 to 28 mm) in four
 directions and takes the first that stays readable: its label and shoulder keep 0.5 mm clear of
-every text and line box placed so far; its label crosses no earlier leader, no visible circle and
-no visible line piece of the view (lines, polyline segments and arc chords, looked up in a grid
-built once per projected view); and its leader passes through no placed text. Callouts beyond the
+every text and line box placed so far; its label crosses no earlier leader and no drawn circle or
+line piece of the view (lines, polyline segments and arc chords, looked up in a grid built once
+per projected view; hidden edges count while hidden lines are drawn); and its leader passes
+through no placed text. Callouts beyond the
 eight largest diameters, and callouts that fit nowhere, are omitted and counted, never drawn over
 other text or lines; the dialog reports the count. Clearance measures
 the final placed boxes, so scale choice and `fits` include callouts. Isometric views omit

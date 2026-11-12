@@ -147,7 +147,6 @@ import type {
   DrawingViewId,
   GeometryExportFormat,
   MeshExportQuality,
-  PrintPreparationResult,
   PrintPreparationSettings,
 } from "@vibeshape/protocol"
 import { assemblyExportSettingsSchema } from "@vibeshape/protocol"
@@ -175,6 +174,7 @@ import { createImportAutomationSession } from "../automation/import-automation-s
 import type { ImportReviewedCommit, ImportReviewInput } from "../automation/import-upload-session"
 import { createBrowserLightweightingAutomationSession } from "../automation/lightweighting-automation-session"
 import { createMetadataAutomationSession } from "../automation/metadata-automation-session"
+import { preparedModelExport } from "../automation/model-export-failure"
 import { createMotionClearanceAutomationSession } from "../automation/motion-clearance-automation-session"
 import { createNumericalJobSession } from "../automation/numerical-job-session"
 import { createPictureRenderSession } from "../automation/picture-render-session"
@@ -205,11 +205,8 @@ import {
   projectSessionDrawing,
   unavailableDrawing,
 } from "./document-drawing"
-import {
-  currentGeometryFailure,
-  prepareDocumentGeometryExport,
-  producedRevisionFailure,
-} from "./document-geometry-export"
+import { prepareDocumentGeometryExport } from "./document-geometry-export"
+import { type ActiveDocumentExportResult, exportSessionGeometry } from "./document-session-export"
 import { PRODUCT_MESH_POLICY } from "./document-worker-settings"
 import { reconcileHistoryInsertion } from "./history-insertion"
 import { captureLibrarySource } from "./library-source"
@@ -252,39 +249,7 @@ type SketchMutationResult = ApplyVariableTableResult
 export type ActiveSketchSolveResult = PersistentSketchSolveResult
 export type ActiveSketchSolveOptions = PersistentSketchSolveOptions
 
-export type ActiveDocumentExportResult =
-  | {
-      ok: true
-      format: GeometryExportFormat
-      file: Uint8Array
-      bodyCount: number
-      documentName: string
-      printPreparation?: PrintPreparationResult
-    }
-  | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
-
-/**
- * Maps a worker export to the active-document result. The worker exports its last successful
- * rebuild, so geometry from an earlier revision than the captured one is rejected.
- */
-function exportedAt(
-  result: Awaited<ReturnType<PersistentDocumentSession["exportDocument"]>>,
-  revision: number,
-  documentName: string,
-): ActiveDocumentExportResult {
-  if (!result.ok) return result
-  const older = producedRevisionFailure(result.response.revision, revision)
-  if (older) return { ok: false, diagnostic: older }
-  const { format, file, bodyCount, printPreparation } = result.response
-  return {
-    ok: true,
-    format,
-    file,
-    bodyCount,
-    documentName,
-    ...(printPreparation ? { printPreparation } : {}),
-  }
-}
+export type { ActiveDocumentExportResult } from "./document-session-export"
 
 export type ActiveAutomationInfo = Readonly<{
   summary: ReturnType<typeof documentSummaryViewSchema.parse>
@@ -1526,15 +1491,7 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       async prepare(format, revision, meshQuality) {
         if (format !== "vshape") {
           const result = await exportRevisionBound(format, revision, meshQuality)
-          return result.ok
-            ? {
-                ok: true as const,
-                documentId: capturedDocumentId,
-                revision,
-                format,
-                file: result.file,
-              }
-            : { ok: false as const }
+          return preparedModelExport(result, capturedDocumentId, revision, format)
         }
         if (!currentReport() || active.snapshot.revision !== revision) return { ok: false as const }
         const result = await exportCapturedProjectBackup({
@@ -3308,30 +3265,14 @@ export function createDocumentControllerRuntime(options: DocumentRuntimeOptions 
       }
     }
     const active = session
-    const { revision, name } = active.snapshot
-    const notCurrent = currentGeometryFailure(state.report, revision)
-    if (notCurrent) return { ok: false, diagnostic: notCurrent }
-    const prepared = prepareDocumentGeometryExport(
-      active.authoredSnapshot,
-      state.report,
+    return exportSessionGeometry({
+      session: active,
+      report: state.report,
       format,
       partId,
       meshQuality,
-    )
-    if (!prepared.ok) return prepared
-    const result = await active.exportDocument(format, prepared.options)
-    if (session !== active || active.snapshot.revision !== revision) {
-      return {
-        ok: false,
-        diagnostic: {
-          code: "export-failed",
-          message: "The active project changed during export. Prepare the current revision again.",
-          retryable: true,
-          sourceCode: "stale-revision",
-        },
-      }
-    }
-    return exportedAt(result, revision, name)
+      isCurrent: () => session === active,
+    })
   }
 
   /** Exact HLR projection of the committed revision for the Drawing dialog and automation. */
