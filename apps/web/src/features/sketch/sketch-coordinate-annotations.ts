@@ -78,10 +78,14 @@ function annotationRegion(
   return roomy ? region : whole
 }
 
-function coordinateAnnotationPlacement(
+const annotationGap = 4
+
+type HorizontalPlacement = Readonly<{ left: number; width: number }>
+
+function coordinateAnnotationColumn(
   annotation: CoordinateAnnotation,
   region: CoordinateAnnotationRegion,
-): CoordinateAnnotationPlacement {
+): HorizontalPlacement {
   const { anchor } = annotation
   const minimumLeft = region.left + annotationMargin
   const maximumRight = region.right - annotationMargin
@@ -97,18 +101,87 @@ function coordinateAnnotationPlacement(
   const left = preferredFits
     ? preferredLeft
     : Math.max(minimumLeft, Math.min(maximumRight - width, alternateLeft))
-  const top = clamp(
-    coordinateAnnotationTop(annotation, region),
-    region.top + annotationHalfHeight,
-    region.bottom - annotationHalfHeight,
-  )
+  return { left, width }
+}
+
+function finishedPlacement(
+  annotation: CoordinateAnnotation,
+  { left, width }: HorizontalPlacement,
+  top: number,
+): CoordinateAnnotationPlacement {
+  const { anchor } = annotation
   return {
     left,
     top,
     width,
     leaderX: Math.max(left, Math.min(left + width, anchor.x)),
-    leaderY: Math.max(top - 12, Math.min(top + 12, anchor.y)),
+    leaderY: Math.max(top - annotationHalfHeight, Math.min(top + annotationHalfHeight, anchor.y)),
   }
+}
+
+/** Shifts a point's stacked labels as one unit; compresses them only when the region is short. */
+function stackedTops(tops: readonly number[], low: number, high: number) {
+  const first = Math.min(...tops)
+  const last = Math.max(...tops)
+  if (last - first <= high - low) {
+    const shift = first < low ? low - first : last > high ? high - last : 0
+    return tops.map((top) => top + shift)
+  }
+  const spacing = 2 * annotationHalfHeight
+  const start = clamp(first, low, high - spacing * (tops.length - 1))
+  const order = tops.map((top, index) => ({ top, index })).sort((a, b) => a.top - b.top)
+  const placed = [...tops]
+  order.forEach(({ index }, rank) => {
+    placed[index] = start + rank * spacing
+  })
+  return placed
+}
+
+/** A region too short to stack the labels places them side by side on one row instead. */
+function sideBySide(
+  columns: readonly HorizontalPlacement[],
+  tops: readonly number[],
+  region: CoordinateAnnotationRegion,
+) {
+  const order = tops.map((top, index) => ({ top, index })).sort((a, b) => a.top - b.top)
+  const total =
+    columns.reduce((sum, { width }) => sum + width, 0) + annotationGap * (columns.length - 1)
+  const minimumLeft = region.left + annotationMargin
+  const start = Math.max(
+    minimumLeft,
+    Math.min(region.right - annotationMargin - total, Math.min(...columns.map(({ left }) => left))),
+  )
+  const placed = [...columns]
+  let left = start
+  for (const { index } of order) {
+    const column = columns[index]
+    if (!column) continue
+    placed[index] = { left, width: column.width }
+    left += column.width + annotationGap
+  }
+  return placed
+}
+
+function coordinateAnnotationGroup(
+  group: readonly CoordinateAnnotation[],
+  region: CoordinateAnnotationRegion,
+) {
+  const low = region.top + annotationHalfHeight
+  const high = region.bottom - annotationHalfHeight
+  const columns = group.map((annotation) => coordinateAnnotationColumn(annotation, region))
+  const preferred = group.map((annotation) => coordinateAnnotationTop(annotation, region))
+  const stackFits = 2 * annotationHalfHeight * (group.length - 1) <= high - low
+  if (stackFits) {
+    const tops = stackedTops(preferred, low, high)
+    return group.map((annotation, index) =>
+      finishedPlacement(annotation, columns[index] as HorizontalPlacement, tops[index] ?? low),
+    )
+  }
+  const row = clamp(preferred.reduce((sum, top) => sum + top, 0) / preferred.length, low, high)
+  const placed = sideBySide(columns, preferred, region)
+  return group.map((annotation, index) =>
+    finishedPlacement(annotation, placed[index] as HorizontalPlacement, row),
+  )
 }
 
 function coordinateAnnotationTop(
@@ -133,10 +206,20 @@ export function layoutSketchCoordinateAnnotations(
   const placements = new Map<string, CoordinateAnnotationPlacement>()
   if (viewport.width <= 0 || viewport.height <= 0) return placements
   const region = annotationRegion(viewport, freeRegion)
+  // A point's horizontal and vertical labels are clamped together so they never cover each other.
+  const groups = new Map<string, CoordinateAnnotation[]>()
   for (const annotation of annotations.filter(({ anchor }) =>
     coordinateAnchorVisible(anchor, viewport),
   )) {
-    placements.set(annotation.id, coordinateAnnotationPlacement(annotation, region))
+    const group = groups.get(annotation.pointId)
+    if (group) group.push(annotation)
+    else groups.set(annotation.pointId, [annotation])
+  }
+  for (const group of groups.values()) {
+    coordinateAnnotationGroup(group, region).forEach((placement, index) => {
+      const annotation = group[index]
+      if (annotation) placements.set(annotation.id, placement)
+    })
   }
   return placements
 }
