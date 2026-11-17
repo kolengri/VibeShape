@@ -3,10 +3,11 @@ import type { LocalProjectSummary } from "@vibeshape/persistence"
 import { Alert } from "@vibeshape/ui/components/alert"
 import { Button } from "@vibeshape/ui/components/button"
 import { Copy } from "@vibeshape/ui/components/icons"
+import { Input } from "@vibeshape/ui/components/input"
 import { Skeleton } from "@vibeshape/ui/components/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { useId } from "react"
+import { useId, useState } from "react"
 import {
   type DocumentControllerState,
   deleteLocalProject,
@@ -20,7 +21,18 @@ export type ProjectLibraryState =
   | { status: "error"; projects: readonly LocalProjectSummary[] }
   | { status: "ready"; projects: readonly LocalProjectSummary[] }
 
-function thumbnailDataUrl(thumbnail: NonNullable<LocalProjectSummary["thumbnail"]>) {
+type ProjectThumbnail = NonNullable<LocalProjectSummary["thumbnail"]>
+const thumbnailSources = new WeakMap<ProjectThumbnail, string>()
+
+function thumbnailDataUrl(thumbnail: ProjectThumbnail) {
+  const cached = thumbnailSources.get(thumbnail)
+  if (cached) return cached
+  const source = encodeThumbnail(thumbnail)
+  if (source) thumbnailSources.set(thumbnail, source)
+  return source
+}
+
+function encodeThumbnail(thumbnail: ProjectThumbnail) {
   try {
     if (thumbnail.mediaType === "image/png") {
       let binary = ""
@@ -38,19 +50,21 @@ function thumbnailDataUrl(thumbnail: NonNullable<LocalProjectSummary["thumbnail"
 
 function ProjectPreview({ project }: { project: LocalProjectSummary }) {
   const t = useTranslations("app.projectFile.library.preview")
-  const source = project.thumbnail ? thumbnailDataUrl(project.thumbnail) : null
+  const { thumbnail } = project
+  const source = thumbnail ? thumbnailDataUrl(thumbnail) : null
 
   return (
     <span
       className={cn(
         "grid shrink-0 place-items-center overflow-hidden rounded-sm border bg-viewport-background",
-        "h-40 w-full",
+        "h-40 w-full grid-rows-1",
       )}
     >
       {source ? (
         <img
           className="size-full object-contain"
           src={source}
+          loading="lazy"
           alt={t("alt", { name: project.name })}
         />
       ) : (
@@ -263,23 +277,23 @@ function ProjectCardActions({
 }
 
 function LocalProjectList({
-  activeDocumentId,
-  controller,
-  disabled,
-  duplicatingDocumentId,
   onCreate,
-  onDelete,
-  onDeleted,
-  onDuplicate,
-  onOpen,
-  onPendingDeleteChange,
-  onRenamed,
-  openDocumentIds,
   projects,
-  switchingDocumentId,
-}: LocalProjectListProps) {
+  query,
+  setQuery,
+  ...cardProps
+}: LocalProjectListProps & {
+  query: string
+  setQuery: (query: string) => void
+}) {
   const t = useTranslations("app.projectFile.library")
   const headingId = useId()
+  const term = query.trim().toLowerCase()
+  const visibleProjects = term
+    ? projects.filter((project) => project.name.toLowerCase().includes(term))
+    : projects
+
+  const emptyMessage = projects.length ? "noMatches" : "empty"
 
   return (
     <section className="grid gap-3" aria-labelledby={headingId}>
@@ -292,36 +306,33 @@ function LocalProjectList({
         <Button
           type="button"
           size="sm"
-          disabled={disabled}
-          isLoading={switchingDocumentId === "new"}
+          disabled={cardProps.disabled}
+          isLoading={cardProps.switchingDocumentId === "new"}
           onClick={onCreate}
         >
           {t("newProject")}
         </Button>
       </div>
-      {projects.length === 0 ? (
-        <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-          {t("empty")}
+      {projects.length > 0 && (
+        <Input
+          type="search"
+          aria-label={t("search")}
+          placeholder={t("search")}
+          value={query}
+          onChange={(event) => setQuery(event.currentTarget.value)}
+        />
+      )}
+      {visibleProjects.length === 0 ? (
+        <p
+          role="status"
+          className="rounded-md border border-dashed p-4 text-sm text-muted-foreground"
+        >
+          {t(emptyMessage)}
         </p>
       ) : (
         <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-label={t("listLabel")}>
-          {projects.map((project) => (
-            <LocalProjectCard
-              key={project.documentId}
-              project={project}
-              activeDocumentId={activeDocumentId}
-              controller={controller}
-              disabled={disabled}
-              duplicatingDocumentId={duplicatingDocumentId}
-              onDelete={onDelete}
-              onDeleted={onDeleted}
-              onDuplicate={onDuplicate}
-              onOpen={onOpen}
-              onPendingDeleteChange={onPendingDeleteChange}
-              onRenamed={onRenamed}
-              openDocumentIds={openDocumentIds}
-              switchingDocumentId={switchingDocumentId}
-            />
+          {visibleProjects.map((project) => (
+            <LocalProjectCard key={project.documentId} project={project} {...cardProps} />
           ))}
         </ul>
       )}
@@ -359,6 +370,7 @@ export function ProjectLibrary({
   switchingDocumentId: string | null
 }) {
   const t = useTranslations("app.projectFile.library")
+  const [query, setQuery] = useState("")
   const openDocumentIds = useOpenProjectIds()
 
   if (library.status === "loading") {
@@ -417,6 +429,8 @@ export function ProjectLibrary({
       onRenamed={onRenamed}
       openDocumentIds={openDocumentIds}
       projects={library.projects}
+      query={query}
+      setQuery={setQuery}
       switchingDocumentId={switchingDocumentId}
     />
   )

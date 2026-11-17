@@ -1,6 +1,6 @@
 import "../../../../../tests/unit/support/dom"
 import { afterEach, describe, expect, it } from "bun:test"
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
   createLengthQuantity,
@@ -201,13 +201,19 @@ describe("CylinderForm", () => {
 
     await user.clear(radius)
     await user.type(radius, "#missing")
-    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(screen.queryByText(copy.validationSummary)).toBeNull()
+    await user.tab()
+    expect(radius.getAttribute("aria-invalid")).toBe("true")
+    expect(screen.getByRole("button", { name: copy.submit })).toHaveProperty("disabled", true)
+    await act(async () => {
+      fireEvent.submit(screen.getByRole("form", { name: copy.title }))
+    })
 
     expect((await screen.findByText(copy.invalidExpression)).textContent).toBe(
       copy.invalidExpression,
     )
     expect((radius as HTMLInputElement).value).toBe("#missing")
-    expect(document.activeElement).toBe(radius)
+    expect(document.activeElement === radius).toBe(true)
     expect(onSave).not.toHaveBeenCalled()
   })
 

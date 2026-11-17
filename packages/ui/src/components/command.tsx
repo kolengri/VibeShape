@@ -1,4 +1,4 @@
-import { Command as CommandPrimitive } from "cmdk"
+import { Command as CommandPrimitive, defaultFilter } from "cmdk"
 import type * as React from "react"
 import {
   Dialog,
@@ -30,6 +30,8 @@ type CommandDialogProps = React.ComponentProps<typeof Dialog> &
     className?: string
     closeLabel: string
     description: string
+    filter?: React.ComponentProps<typeof Command>["filter"]
+    onKeyDownCapture?: React.ComponentProps<typeof DialogContent>["onKeyDownCapture"]
     onCloseAutoFocus?: React.ComponentProps<typeof DialogContent>["onCloseAutoFocus"]
     searchLabel: string
     showCloseButton?: boolean
@@ -41,6 +43,8 @@ function CommandDialog({
   className,
   closeLabel,
   description,
+  filter = defaultFilter,
+  onKeyDownCapture,
   onCloseAutoFocus,
   searchLabel,
   showCloseButton = true,
@@ -53,6 +57,7 @@ function CommandDialog({
         closeLabel={closeLabel}
         className={className}
         onCloseAutoFocus={onCloseAutoFocus}
+        onKeyDownCapture={onKeyDownCapture}
         showCloseButton={showCloseButton}
       >
         <DialogHeader>
@@ -60,7 +65,7 @@ function CommandDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <DialogBody className="flex flex-col gap-0 overflow-hidden p-0">
-          <Command label={searchLabel} className="h-auto flex-1 rounded-none">
+          <Command filter={filter} label={searchLabel} className="h-auto flex-1 rounded-none">
             {children}
           </Command>
         </DialogBody>
@@ -183,4 +188,5 @@ export {
   CommandList,
   CommandSeparator,
   CommandShortcut,
+  defaultFilter as defaultCommandFilter,
 }

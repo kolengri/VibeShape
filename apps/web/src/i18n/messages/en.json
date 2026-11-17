@@ -181,6 +181,8 @@
         "open": "Open",
         "openLabel": "Open {name}, revision {revision}",
         "empty": "No local projects are available yet.",
+        "search": "Search projects by name",
+        "noMatches": "No projects match this search.",
         "loading": "Loading local projects…",
         "loadFailed": "Local projects could not be loaded. Try again.",
         "retry": "Retry",

@@ -213,6 +213,26 @@ test.describe("foundation CAD shell", () => {
         .getByText("Select a closed sketch profile first."),
     ).toBeVisible()
 
+    await page.keyboard.press("Control+K")
+    await expect(palette).toBeHidden()
+    await page.keyboard.press("Control+K")
+    await expect(search).toHaveValue("")
+
+    await search.fill("extrude")
+    await search.fill("box")
+    await expect(palette.getByRole("option").first()).toHaveText("Box")
+    await search.press("Enter")
+    const box = page.getByRole("form", { name: "Create box" })
+    const width = box.getByRole("combobox", { name: "Width" })
+    await expect(width).toBeFocused()
+    await width.fill("0 mm")
+    await width.press("Tab")
+    await expect(width).toHaveAttribute("aria-invalid", "true")
+    await width.fill("20 mm")
+    await expect(width).not.toHaveAttribute("aria-invalid", "true")
+    await box.getByRole("button", { name: "Cancel", exact: true }).click()
+
+    await page.keyboard.press("Control+K")
     await search.fill("new sketch")
     await palette.getByText("Create sketch", { exact: true }).click()
     await expect(page.getByRole("heading", { name: "Select a sketch plane" })).toBeVisible()

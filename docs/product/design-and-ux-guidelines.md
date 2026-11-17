@@ -578,7 +578,7 @@ History uses compact, named feature icons by default, with equal 4 px padding ab
 
 - `Ctrl/Cmd+K` opens a searchable list of registered application commands.
 - Results show command name, group, shortcut, and current enabled state.
-- Search matches familiar synonyms, but the canonical command name remains stable.
+- Search matches localized names and synonyms. Entering a full command name narrows results to that name. If all exact matches are disabled, Enter leaves the palette open with their prerequisites visible. Editing the query restores broader matches.
 - Disabled results explain their missing precondition and do not disappear merely because context changed.
 - Recent commands MAY improve ranking locally; no usage data leaves the device.
 - The palette does not become a second implementation of command behavior.
@@ -654,6 +654,7 @@ Never replace this structure with a raw exception, a generic `Something went wro
 ## Project Library, Empty States, and Onboarding
 
 - The project library prioritizes `New project`, `Open .vshape`, recent local projects, and recovery state.
+- Search filters local projects by a case-insensitive substring of the name and preserves their order. Clearing the field restores the full list.
 - Each project card opens directly and shows its name, exact-revision 3D preview when available, modification time, and separate accessible secondary actions. Preview generation is derived and non-authoritative: a failed write must not be marked complete and receives one bounded retry. A missing preview uses a quiet origin-grid illustration without an error caption.
 - Deletion uses a specific confirmation and does not imply that exported copies are deleted.
 - The first-run screen offers the versioned bracket example and a short `Create sketch -> Extrude -> Print check` path.

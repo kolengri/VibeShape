@@ -18,6 +18,9 @@ const actions = {
   createConnectMounts: vi.fn(),
   createHole: vi.fn(),
   createBox: vi.fn(),
+  createDrawing: vi.fn(),
+  lightweighting: vi.fn(),
+  generativeDesign: vi.fn(),
   createCylinder: vi.fn(),
   createSphere: vi.fn(),
   createCone: vi.fn(),
@@ -29,6 +32,7 @@ const actions = {
   createSketch: vi.fn(),
   createSubtract: vi.fn(),
   redoSketch: vi.fn(),
+  documentUndo: vi.fn(async () => undefined),
   setSketchCameraMode: vi.fn(),
   setSketchConstruction: vi.fn(),
   setSketchFinalContext: vi.fn(),
@@ -40,7 +44,8 @@ const actions = {
 
 const controller = {
   status: "ready",
-  report: { mode: "read-write", snapshot: { features: [] } },
+  history: { canUndo: true },
+  report: { mode: "read-write", snapshot: { features: [], revision: 2 } },
 } as unknown as DocumentControllerState
 
 const commands = resolveBuiltInEditorCommands({
@@ -129,6 +134,58 @@ describe("EditorCommandPalette", () => {
     expect(JSON.parse(localStorage.getItem("vibeshape.editor-command-recents.v1") ?? "[]")).toEqual(
       [editorCommandIds.createBox],
     )
+  })
+
+  it("matches partial names and missing prerequisites for non-exact searches", async () => {
+    const user = userEvent.setup()
+    renderPalette()
+    const search = screen.getByRole("combobox", { name: "Search commands" })
+    await user.type(search, "kbd")
+    expect(screen.getByRole("option", { name: /Keyboard shortcuts/ })).toBeTruthy()
+    await user.clear(search)
+    await user.type(search, "closed sketch profile")
+    expect(screen.getByRole("option", { name: /^Revolve/ }).getAttribute("aria-disabled")).toBe(
+      "true",
+    )
+  })
+
+  it("keeps duplicate exact names and invokes the eligible command", async () => {
+    const user = userEvent.setup()
+    renderPalette()
+    await user.type(screen.getByRole("combobox", { name: "Search commands" }), "Undo")
+    const options = screen.getAllByRole("option")
+    expect(options).toHaveLength(2)
+    expect(
+      options.filter((option) => option.getAttribute("aria-disabled") === "true"),
+    ).toHaveLength(1)
+    await user.keyboard("{Enter}")
+    expect(actions.documentUndo).toHaveBeenCalledWith(2)
+    expect(actions.undoSketch).not.toHaveBeenCalled()
+  })
+
+  it("invokes the exact name after replacing a query with competing keyword matches", async () => {
+    const user = userEvent.setup()
+    renderPalette()
+    const search = screen.getByRole("combobox", { name: "Search commands" })
+    await user.type(search, "quick")
+    await user.clear(search)
+    await user.type(search, "lightweighting{Enter}")
+    expect(actions.lightweighting).toHaveBeenCalledTimes(1)
+    expect(actions.generativeDesign).not.toHaveBeenCalled()
+  })
+
+  it("keeps a disabled exact match visible and never substitutes another command on Enter", async () => {
+    const user = userEvent.setup()
+    const close = renderPalette()
+    const search = screen.getByRole("combobox", { name: "Search commands" })
+    await user.type(search, "line{Enter}")
+    const options = screen.getAllByRole("option")
+    expect(options).toHaveLength(1)
+    expect(options[0]?.getAttribute("aria-disabled")).toBe("true")
+    expect(close).not.toHaveBeenCalled()
+    await user.clear(search)
+    await user.type(search, "blueprint{Enter}")
+    expect(actions.createDrawing).toHaveBeenCalledTimes(1)
   })
 
   it.each([
