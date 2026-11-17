@@ -253,14 +253,20 @@ describe("BoxForm", () => {
 
     await user.clear(width)
     await user.type(width, "#missing")
-    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(screen.queryByText(copy.validationSummary)).toBeNull()
+    await user.tab()
+    expect(width.getAttribute("aria-invalid")).toBe("true")
+    expect(screen.getByRole("button", { name: copy.submit })).toHaveProperty("disabled", true)
+    await act(async () => {
+      fireEvent.submit(screen.getByRole("form", { name: copy.title }))
+    })
 
     expect((await screen.findByText(copy.invalidExpression)).textContent).toBe(
       copy.invalidExpression,
     )
     expect(screen.getByText(copy.validationSummary).textContent).toBe(copy.validationSummary)
     expect((width as HTMLInputElement).value).toBe("#missing")
-    expect(document.activeElement).toBe(width)
+    expect(document.activeElement === width).toBe(true)
     expect(onSave).not.toHaveBeenCalled()
 
     await user.clear(width)

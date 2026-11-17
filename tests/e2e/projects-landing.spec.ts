@@ -78,7 +78,19 @@ test("opens saved cards and deep links, imports backups and deletes from the sha
     animations: "disabled",
     path: info.outputPath("project-chooser-dark.png"),
   })
+  const search = page.getByRole("searchbox", { name: "Search projects by name" })
+  await search.fill("no match")
+  await expect(page.getByText("No projects match this search.")).toBeVisible()
+  await expect(page.getByRole("listitem")).toHaveCount(0)
+  await search.fill("  bRacKet  ")
   const card = page.getByRole("listitem").filter({ hasText: "Landing bracket" })
+  const preview = card.getByRole("img", { name: "3D preview of Landing bracket" })
+  await expect(preview).toBeVisible()
+  expect(
+    await preview.evaluate(
+      (image) => image.clientHeight <= (image.parentElement?.clientHeight ?? 0),
+    ),
+  ).toBe(true)
   const open = card.getByRole("button", { name: /^Open Landing bracket, revision / })
   const cardBounds = await card.boundingBox()
   const openBounds = await open.boundingBox()

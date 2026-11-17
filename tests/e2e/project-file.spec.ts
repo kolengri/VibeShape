@@ -421,11 +421,14 @@ test.describe("native project file", () => {
     await openApplicationMenuItem(page, "Projects")
     const sourceDialog = page.getByRole("main")
     const sourceProject = sourceDialog.getByRole("listitem").filter({ hasText: "Revision 4" })
+    const search = sourceDialog.getByRole("searchbox", { name: "Search projects by name" })
+    await search.fill("untitled")
     await sourceProject.getByRole("button", { name: /Duplicate .*revision 4/ }).click()
     const copiedProject = sourceDialog.getByRole("listitem").filter({
       hasText: "Untitled project copy",
     })
     await expect(copiedProject).toContainText("Revision 5")
+    await expect(search).toHaveValue("untitled")
     await expect(
       copiedProject.getByRole("img", { name: "3D preview of Untitled project copy" }),
     ).toBeVisible()

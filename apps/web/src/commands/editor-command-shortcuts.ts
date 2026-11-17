@@ -36,7 +36,7 @@ function matchesShortcut(event: KeyboardEvent, shortcut: EditorCommandShortcut) 
   )
 }
 
-function isPaletteShortcut(event: KeyboardEvent) {
+export function isPaletteShortcut(event: KeyboardEvent) {
   return matchesShortcut(event, paletteShortcut)
 }
 

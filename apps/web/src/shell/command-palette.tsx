@@ -7,6 +7,7 @@ import {
   CommandItem,
   CommandList,
   CommandShortcut,
+  defaultCommandFilter,
 } from "@vibeshape/ui/components/command"
 import { type RefObject, useCallback, useRef, useState } from "react"
 import { z } from "zod"
@@ -21,6 +22,7 @@ import {
   editorCommandShortcutLabel,
   useEditorCommandCopy,
 } from "../commands/editor-command-presentation"
+import { isPaletteShortcut } from "../commands/editor-command-shortcuts"
 
 const recentStorageKey = "vibeshape.editor-command-recents.v1"
 const recentCommandIdsSchema = z.array(z.string().catch("")).max(100)
@@ -101,7 +103,7 @@ function PaletteCommand({
   return (
     <CommandItem
       disabled={!command.eligibility.enabled}
-      keywords={keywords}
+      keywords={[label, ...keywords, reason ?? ""]}
       value={command.descriptor.id}
       onSelect={() => onInvoke(command)}
     >
@@ -132,14 +134,13 @@ export function EditorCommandPalette({
 }) {
   const t = useTranslations("app.commands.palette")
   const copy = useEditorCommandCopy()
-  const [query, setQuery] = useState("")
+  const launchedCommand = useRef<EditorCommandId | null>(null)
   const [recentCommandIds, setRecentCommandIds] =
     useState<readonly EditorCommandId[]>(readRecentCommandIds)
-  const sortedCommands = sortByRecent(commands, recentCommandIds)
-  const setOpen = (nextOpen: boolean) => {
-    if (!nextOpen) setQuery("")
-    onOpenChange(nextOpen)
-  }
+  const sortedCommands = open ? sortByRecent(commands, recentCommandIds) : []
+  const labels = new Set(
+    sortedCommands.map(({ descriptor }) => copy.label(descriptor).toLowerCase()),
+  )
   const invoke = (command: ResolvedEditorCommand) => {
     if (!command.eligibility.enabled) return
     const nextRecent = [
@@ -148,31 +149,44 @@ export function EditorCommandPalette({
     ].slice(0, 6)
     setRecentCommandIds(nextRecent)
     writeRecentCommandIds(nextRecent)
-    setOpen(false)
+    launchedCommand.current = command.descriptor.id
+    onOpenChange(false)
     command.invoke()
   }
 
   return (
     <CommandDialog
+      filter={(id, query, keywords) => {
+        const term = query.trim().toLowerCase()
+        if (labels.has(term)) return keywords?.[0]?.toLowerCase() === term ? 1 : 0
+        return defaultCommandFilter(id, term, keywords)
+      }}
+      onKeyDownCapture={(event) => {
+        if (event.nativeEvent.isComposing || !isPaletteShortcut(event.nativeEvent)) return
+        event.preventDefault()
+        event.stopPropagation()
+        if (!event.repeat) onOpenChange(false)
+      }}
       closeLabel={t("closeLabel")}
       description={t("description")}
       open={open}
       searchLabel={t("searchLabel")}
       title={t("title")}
       onCloseAutoFocus={(event) => {
-        const returnTarget = returnFocusRef.current
+        const target = launchedCommand.current
+          ? document.querySelector<HTMLInputElement>(
+              `[data-palette-focus="${launchedCommand.current}"]:not(:disabled)`,
+            )
+          : null
+        launchedCommand.current = null
+        const returnTarget = target ?? returnFocusRef.current
         if (!returnTarget?.isConnected) return
         event.preventDefault()
         returnTarget.focus()
       }}
-      onOpenChange={setOpen}
+      onOpenChange={onOpenChange}
     >
-      <CommandInput
-        aria-label={t("searchLabel")}
-        placeholder={t("placeholder")}
-        value={query}
-        onValueChange={setQuery}
-      />
+      <CommandInput aria-label={t("searchLabel")} placeholder={t("placeholder")} />
       <CommandList label={t("resultsLabel")}>
         <CommandEmpty>{t("empty")}</CommandEmpty>
         {groupOrder.map((group) => {
@@ -185,12 +199,7 @@ export function EditorCommandPalette({
                 <PaletteCommand
                   key={command.descriptor.id}
                   command={command}
-                  keywords={[
-                    ...copy.keywords(command.descriptor.labelKey),
-                    command.eligibility.enabled
-                      ? ""
-                      : copy.disabledReason(command.eligibility.reason),
-                  ]}
+                  keywords={copy.keywords(command.descriptor.labelKey)}
                   label={copy.label(command.descriptor)}
                   reason={
                     command.eligibility.enabled

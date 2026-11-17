@@ -8,12 +8,13 @@ import {
 } from "@vibeshape/domain"
 import { Form } from "@vibeshape/ui/integrations/tanstack-form"
 import { useState } from "react"
+import { editorCommandIds } from "../../commands/editor-command"
 import { TaskPanelContentProvider } from "../../components/task-panel-layout"
 import {
   defaultLengthExpression,
   type useDocumentDisplayUnits,
 } from "../../document/document-display-units"
-import { cadFormValidationLogic, useCadForm } from "../part-design/cad-form"
+import { useCadForm } from "../part-design/cad-form"
 import { isFeaturePreviewReady } from "../part-design/feature-preview-readiness"
 import {
   defaultPrimitiveOriginValues,
@@ -211,10 +212,9 @@ export function CylinderForm({
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
   const form = useCadForm({
-    validationLogic: cadFormValidationLogic,
     defaultValues,
     validators: {
-      onDynamic: ({ value }) => {
+      onChange: ({ value }) => {
         const parsed = parseCylinderValues(value, variables, copy, displayUnits.length)
         return parsed.ok ? undefined : { form: copy.validationSummary, fields: parsed.issues }
       },
@@ -249,6 +249,7 @@ export function CylinderForm({
     <form.AppField name={fieldName}>
       {(field) => (
         <field.LengthExpressionField
+          data-palette-focus={fieldName === "radius" ? editorCommandIds.createCylinder : undefined}
           id={`cylinder-${fieldName}`}
           label={label}
           description={copy.expressionDescription}
@@ -279,7 +280,7 @@ export function CylinderForm({
       aria-label={copy.title}
       className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
     >
-      <TaskPanelContentProvider content={<form.FormError />}>
+      <TaskPanelContentProvider content={<form.FormError afterSubmit />}>
         {onPreviewChange ? (
           <form.Subscribe selector={(state) => state.values}>
             {(values) => (
